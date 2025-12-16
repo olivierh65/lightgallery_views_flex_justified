@@ -3,7 +3,7 @@
   avec Isotope à tous les niveaux pour une mise en page réactive.
 #}
 
-{% macro render_group_recursive(group, options, parent_id, level) %}
+{% macro render_group_recursive(group, options, parent_id, settings, level) %}
 
 	{# ---- ITEM DE GROUPE (pour Isotope du parent) ---- #}
 	<div
@@ -14,8 +14,8 @@
 			<div class="group-title-wrapper level-{{ level }}">
 				{% if group.title|striptags|trim|length == 0 %}
 					<span class="group-title level-{{ level }} placeholder" aria-hidden="true">
-          &nbsp;
-          </span>
+						&nbsp;
+					</span>
 				{% else %}
 					<span class="group-title level-{{ level }}">
 						{{ group.title }}
@@ -36,8 +36,13 @@
 
 				{# ---- ALBUMS DU GROUPE ---- #}
 				{% if has_albums %}
+					{# Définir des dimensions par défaut #}
+					{% set thumb_width = settings.thumbnail_width|default(218) %}
+					{% set thumb_height = settings.thumbnail_height|default(218) %}
+
 					{% for album in group.albums %}
-						<div class="isotope-item album-item">
+						<div class="isotope-item album-item" style="width: {{ thumb_width }}px; height: {{ thumb_height }}px;" data-width="{{ thumb_width }}" data-height="{{ thumb_height }}">
+							{# Lien de couverture de l'album #}
 
 							<a href="#" class="album-cover" data-album-id="{{ album.id }}" data-once="lg-album">
 								<span class="album-title">{{ album.title }}</span>
@@ -102,7 +107,7 @@
 				{# ---- SOUS-GROUPES (RÉCURSIF) ---- #}
 				{% if has_subgroups %}
 					{% for subgroup in group.subgroups %}
-						{{ _self.render_group_recursive(subgroup, options, group_id, level + 1) }}
+						{{ _self.render_group_recursive(subgroup, options, group_id, settings, level + 1) }}
 					{% endfor %}
 				{% endif %}
 
@@ -133,7 +138,7 @@
 
 		{% if groups|length > 0 %}
 			{% for group in groups %}
-				{{ macros.render_group_recursive(group, options, root_id, 0) }}
+				{{ macros.render_group_recursive(group, options, root_id, settings, 0) }}
 			{% endfor %}
 		{% else %}
 			<p class="no-results">Aucun album trouvé.</p>

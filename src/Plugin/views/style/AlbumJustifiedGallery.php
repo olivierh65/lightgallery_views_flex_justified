@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\lightgallery_views_isotope\Plugin\views\style;
+namespace Drupal\lightgallery_views_flex_justified\Plugin\views\style;
 
 use Drupal\media\MediaInterface;
 use Drupal\Core\Entity\EntityInterface;
@@ -227,7 +227,7 @@ class AlbumJustifiedGallery extends StylePluginBase {
       '#attached' => [
         'library' => [
           'lightgallery/lightgallery',
-          'lightgallery_views_isotope/justified-gallery',
+          'lightgallery_views_flex_justified/justified-gallery',
         ],
         'drupalSettings' => [
           'settings' => [

@@ -12,7 +12,7 @@ use Symfony\Component\Yaml\Yaml;
 /**
  * Implements hook_theme().
  */
-function lightgallery_views_isotope_theme(array $existing, string $type, string $theme, string $path): array {
+function lightgallery_views_flex_justified_theme(array $existing, string $type, string $theme, string $path): array {
   return [
     'album_justified_gallery' => [
       'variables' => [
@@ -43,7 +43,7 @@ function lightgallery_views_isotope_theme(array $existing, string $type, string 
 /**
  * Implements hook_requirements().
  */
-function lightgallery_views_isotope_requirements($phase) {
+function lightgallery_views_flex_justified_requirements($phase) {
   $requirements = [];
 
   if ($phase === 'runtime') {
@@ -84,9 +84,9 @@ function lightgallery_views_isotope_requirements($phase) {
 
 
 /**
- * Default preprocess function for the lightgallery_views_isotope theme hook.
+ * Default preprocess function for the lightgallery_views_flex_justified theme hook.
  */
-function template_preprocess_lightgallery_views_isotope(array &$variables): void {
+function template_preprocess_lightgallery_views_flex_justified(array &$variables): void {
   // Convert the item attributes.
   foreach ($variables['items'] as &$item) {
     $item['attributes'] = new Attribute($item['attributes'] ?? []);
@@ -151,7 +151,7 @@ function template_preprocess_lightgallery_views_isotope(array &$variables): void
 /**
  * Implements hook_preprocess_HOOK().
  */
-function lightgallery_views_isotope_preprocess_image(array &$variabes): void {
+function lightgallery_views_flex_justified_preprocess_image(array &$variabes): void {
   // Append "#video" to video thumbnails to allow custom styling.
   if (!empty($variabes['attributes']['data-is-video-thumbnail'])) {
     $variabes['attributes']['src'] .= '#video';

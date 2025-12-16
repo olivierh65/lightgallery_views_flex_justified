@@ -1,5 +1,5 @@
-name: 'LightGallery Views Isotope'
-description: Integrates image and media fields with lightGallery.
+name: 'LightGallery Views Flex Justified'
+description: Integrates image and media fields with lightGallery using flexbox and justified gallery layouts.
 package: Media
 
 type: module

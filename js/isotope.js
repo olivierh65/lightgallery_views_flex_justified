@@ -1,5 +1,4 @@
 (function ($, Drupal, drupalSettings, once) {
-
   // Stockage global des instances Isotope
   const isoInstances = {};
 
@@ -8,7 +7,6 @@
   // =====================================================
   Drupal.behaviors.isotopeAlbumGallery = {
     attach: function (context, settings) {
-
       const layout_settings = drupalSettings.settings?.layout || {};
 
       console.log("=== Isotope Album Gallery Initialization ===");
@@ -25,17 +23,17 @@
         },
 
         masonry: {
-          columnWidth: parseInt(layout_settings.columnWidth) + 'px' || undefined,
-          gutter: parseInt(layout_settings.gutter) || 1,
+          columnWidth: parseInt(layout_settings.columnWidth) || 220,
+          gutter: parseInt(layout_settings.gutter) || 10,
           horizontalOrder: layout_settings.horizontalOrder !== false,
           fitWidth: layout_settings.fitWidth || false,
         },
 
         packery: {
-          gutter: parseInt(layout_settings.gutter) || 1,
-          columnWidth: parseInt(layout_settings.columnWidth) + 'px'|| undefined,
-          rowHeight: parseInt(layout_settings.rowHeight) + 'px' || undefined,
-          horizontal: layout_settings.horizontal || false,
+          gutter: parseInt(layout_settings.gutter) || 10,
+          columnWidth: parseInt(layout_settings.columnWidth) || 220,
+          rowHeight: parseInt(layout_settings.rowHeight) || undefined,
+          horizontalOrder: layout_settings.horizontalOrder !== false,
         },
       };
 
@@ -95,7 +93,6 @@
                 isoInstances[containerId].layout();
               }
             }, 100);
-
           } catch (error) {
             console.error(
               "Error initializing Isotope for",
@@ -134,10 +131,10 @@
         });
       }
 
-      /*
       // Chercher le conteneur racine
-      const $root = $(".isotope-root", context).once("isotope-init");
-      // const $root = $(once('isotope-init', '.isotope-root', context));
+      const $root = $(
+        once("albums-grid-init", ".albums-grid[data-isotope-albums]", context)
+      );
 
       if ($root.length === 0) {
         return;
@@ -162,7 +159,6 @@
         setTimeout(relayoutCascade, 1000);
         setTimeout(relayoutCascade, 2000);
       }
-      */
 
       // Relayout au redimensionnement (debounced)
       let resizeTimer;
@@ -185,7 +181,7 @@
         relayoutCascade: relayoutCascade,
         instances: isoInstances,
       };
-    }
+    },
   };
 
   // =====================================================
@@ -217,16 +213,14 @@
           }
 
           const albumSettings =
-            drupalSettings.settings.lightgallery?.albums?.[albumId] || {};
+            drupalSettings.settings.lightgallery?.albums_settings[albumId] ||
+            {};
 
+          // Initialize LightGallery if not already done
           if (!$album.data("lightGallery")) {
             const plugins = [];
-
             Object.values(albumSettings.plugins || {}).forEach((name) => {
-              if (window[name]) {
-                console.log("Adding LightGallery plugin:", name);
-                plugins.push(window[name]);
-              }
+              if (window[name]) plugins.push(window[name]);
             });
 
             const instance = window.lightGallery($album[0], {
@@ -244,5 +238,4 @@
       });
     },
   };
-
 })(jQuery, Drupal, drupalSettings, window.once);
