@@ -208,6 +208,9 @@ trait ProcessAlbumTrait {
         }
       }
     }
+    else {
+      \Drupal::logger('album_gallery')->warning('Row entity is missing or does not have the expected field.');
+    }
 
     // Get lightgallery settings.
     $renderer = $this->view->display_handler->getOption('fields')[$this->options['image']['image_field']]['settings']['view_mode'] ?? 'default';

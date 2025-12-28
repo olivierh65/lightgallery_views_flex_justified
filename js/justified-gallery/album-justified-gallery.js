@@ -24,17 +24,14 @@
         var $album = $("#" + albumId);
 
         // Récupère les settings spécifiques à cet album
-        var albumSettings =
-          drupalSettings.lightgallery?.albums?.[albumId] || {};
+        const albumSettings = drupalSettings.settings.lightgallery?.albums_settings[albumId] || {};
 
         if ($album.length && typeof window.lightGallery === "function") {
           if (!$album.data("lightGallery")) {
             // Initialisation native
             const plugins = [];
-            (albumSettings.plugins || []).forEach(function (name) {
-              if (window[name]) {
-                plugins.push(window[name]);
-              }
+            Object.values(albumSettings.plugins || {}).forEach((name) => {
+              if (window[name]) plugins.push(window[name]);
             });
 
             const instance = window.lightGallery($album[0], {
