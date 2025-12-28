@@ -1,8 +1,6 @@
 {# templates/views-view-style--album-justified-gallery.html.twig #}
 {# This template is used to render a justified gallery of album items. #}
 
-{# {{ dump() }} #}
-
 {% set rows = rows|default([]) %}
 
 {# Ensure that the rows variable is an array #}
@@ -11,7 +9,8 @@
 {% endif %}
 
 <div{{attributes.addClass(classes)}}>
-	<div id="albums-gallery"> {% for item in rows %}
+	<div id="albums-gallery">
+	{% for item in rows %}
 		<div class="album-block">
 			{% if item.medias is not empty %}
 				<a href="#" class="album-cover" data-album-id="{{ item.id }}" style="display: block;">

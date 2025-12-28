@@ -2,8 +2,6 @@
 
 namespace Drupal\lightgallery_views_flex_justified\Plugin\views\style;
 
-namespace Drupal\lightgallery_views_flex_justified\Plugin\views\style;
-
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\style\StylePluginBase;
 use Drupal\Core\File\FileUrlGeneratorInterface;
