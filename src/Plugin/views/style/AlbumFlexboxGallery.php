@@ -117,13 +117,14 @@ class AlbumFlexboxGallery extends StylePluginBase {
     parent::buildOptionsForm($form, $form_state);
 
     if (isset($form['grouping']) && is_array($form['grouping'])) {
-      // Limit to two grouping levels.
-      $form['grouping'] = array_slice($form['grouping'], 0, 2, TRUE);
+      // Limit to five grouping levels.
+      $form['grouping'] = array_slice($form['grouping'], 0, 5, TRUE);
     }
 
-    [$fields_text, $fields_media, $fields_taxo] = $this->getTextAndMediaFields($this->view);
+    // Get available fields from the view, excluding hidden fields.
+    [$fields_text, $fields_media, $fields_taxo, $fields_number] = $this->getTextAndMediaFields(TRUE);
 
-    // Field for the description.
+    // Image styles for thumbnails.
     $image_styles = ImageStyle::loadMultiple();
     foreach ($image_styles as $style => $image_style) {
       $image_thumbnail_style[$image_style->id()] = $image_style->label();
