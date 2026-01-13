@@ -6,6 +6,8 @@ use Drupal\file\FileInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\media\MediaInterface;
 use Drupal\image\Entity\ImageStyle;
+use Drupal\views\Plugin\views\field\EntityField;
+use Drupal\field\Entity\FieldStorageConfig;
 
 /**
  * Provides reusable logic for albums.
@@ -17,6 +19,7 @@ trait ProcessAlbumTrait {
    */
   private function getImageStyleDimensions(string $style_name): array {
     $max_width = NULL;
+
     $max_height = NULL;
     if (!empty($style_name)) {
       $image_style = ImageStyle::load($style_name);
@@ -124,11 +127,27 @@ trait ProcessAlbumTrait {
       $this->view->row_index = $index;
 
       // Get the media entity from the row.
-      if (!isset($row->_entity) || !$row->_entity instanceof MediaInterface) {
+      $media = NULL;
+      
+      // Vérifier d'abord si le média est dans _relationship_entities (nouvelle structure)
+      if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
+        // Chercher le champ de relationship (ex: field_media_album_av_media)
+        foreach ($row->_relationship_entities as $rel_field => $rel_entity) {
+          if ($rel_entity instanceof MediaInterface) {
+            $media = $rel_entity;
+            break;
+          }
+        }
+      }
+      
+      // Fallback: ancienne structure où le média était dans _entity
+      if (!$media && isset($row->_entity) && $row->_entity instanceof MediaInterface) {
+        $media = $row->_entity;
+      }
+      
+      if (!$media) {
         continue;
       }
-
-      $media = $row->_entity;
 
       // Keep first media for album thumbnail.
       if (!$first_media) {
@@ -205,7 +224,20 @@ trait ProcessAlbumTrait {
 
     // Get the media entity from the row.
     $media = NULL;
-    if (isset($row->_entity) && $row->_entity instanceof MediaInterface) {
+    
+    // Vérifier d'abord si le média est dans _relationship_entities (nouvelle structure)
+    if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
+      // Chercher le champ de relationship (ex: field_media_album_av_media)
+      foreach ($row->_relationship_entities as $rel_field => $rel_entity) {
+        if ($rel_entity instanceof MediaInterface) {
+          $media = $rel_entity;
+          break;
+        }
+      }
+    }
+    
+    // Fallback: ancienne structure où le média était dans _entity
+    if (!$media && isset($row->_entity) && $row->_entity instanceof MediaInterface) {
       $media = $row->_entity;
     }
 
@@ -500,44 +532,252 @@ trait ProcessAlbumTrait {
   /**
    *
    */
-  protected function getTextAndMediaFields(ViewExecutable $view) {
+  protected function getTextAndMediaFields() {
     $text_fields = [];
     $media_fields = [];
     $taxo_fields = [];
 
-    // 1. determine entity type and bundle from the view.
-    $base_table = $view->storage->get('base_table');
-    $entity_type_id = NULL;
-    $table_to_entity = [
-      'node_field_data' => 'node',
-      'media_field_data' => 'media',
-      'user_field_data' => 'user',
-      'taxonomy_term_field_data' => 'taxonomy_term',
-      // Add other mappings as needed.
-    ];
-    if (isset($table_to_entity[$base_table])) {
-      $entity_type_id = $table_to_entity[$base_table];
-    }
-    else {
-      // Fallback: search in entity type definitions.
-      foreach (\Drupal::entityTypeManager()->getDefinitions() as $id => $definition) {
-        if ($definition->getBaseTable() === $base_table) {
-          $entity_type_id = $id;
-          break;
+    /* ********************************* */
+    $field_manager = \Drupal::service('entity_field.manager');
+    $handlers = $this->displayHandler->getHandlers('field');
+    $relationships = $this->displayHandler->getHandlers('relationship');
+
+    // 1. Type d'entité de base de la vue
+    $base_entity_type = $this->view->getBaseEntityType()->id();
+
+    // 2. Parcourir les champs
+    foreach ($handlers as $field_id => $handler) {
+      if (!($handler instanceof EntityField)) {
+        continue;
+      }
+
+      $field_system_name = $handler->field;
+      $field_label = $handler->label();
+      $field_name = $handler->definition['title'] ?? $field_system_name;
+
+      // 3. Déterminer l'entité source du champ
+      $entity_type_id = $base_entity_type;
+      $relationship_id = $handler->options['relationship'] ?? 'none';
+
+      \Drupal::logger('lightgallery_debug')->info('Traitement champ @field_id (@field_name)', [
+        '@field_id' => $field_id,
+        '@field_name' => $field_system_name,
+      ]);
+
+      if ($relationship_id !== 'none' && isset($relationships[$relationship_id])) {
+        \Drupal::logger('lightgallery_debug')->info('RELATIONSHIP détectée: @rel_id', ['@rel_id' => $relationship_id]);
+
+        $relationship = $relationships[$relationship_id];
+
+        // IMPORTANT: Le champ du handler ($handler->field) est déjà le bon nom
+        // C'est la RELATIONSHIP qui porte la référence à l'entité cible.
+        // 1. Récupérer l'entity type CIBLE de la relationship
+        // La relationship définit vers quel type d'entité elle pointe.
+        $relationship_definition = $relationship->definition;
+
+        \Drupal::logger('lightgallery_debug')->info('Relationship definition: @def', [
+          '@def' => json_encode($relationship_definition),
+        ]);
+
+        // Méthode 1 : Via la base table de la relationship.
+        if (isset($relationship_definition['relationship']['base'])) {
+          $base_table = $relationship_definition['relationship']['base'];
+
+          \Drupal::logger('lightgallery_debug')->info('Base table trouvée: @table', ['@table' => $base_table]);
+
+          // Extraire l'entity type depuis la table.
+          if (preg_match('/^([a-z_]+)_field_data$/', $base_table, $matches)) {
+            // 'media', 'node', 'user', etc.
+            $target_entity_type = $matches[1];
+            \Drupal::logger('lightgallery_debug')->info('Entity type extrait via regex 1: @type', ['@type' => $target_entity_type]);
+          }
+          elseif (preg_match('/^([a-z_]+)__/', $base_table, $matches)) {
+            $target_entity_type = $matches[1];
+            \Drupal::logger('lightgallery_debug')->info('Entity type extrait via regex 2: @type', ['@type' => $target_entity_type]);
+          }
+          else {
+            // Table mapping pour les cas standards.
+            $table_map = [
+              'media_field_data' => 'media',
+              'node_field_data' => 'node',
+              'users_field_data' => 'user',
+              'taxonomy_term_field_data' => 'taxonomy_term',
+              'file_managed' => 'file',
+            ];
+            $target_entity_type = $table_map[$base_table] ?? NULL;
+            \Drupal::logger('lightgallery_debug')->info('Entity type via table_map: @type (NULL si non trouvé)', ['@type' => $target_entity_type ?? 'NULL']);
+          }
+        }
+        else {
+          \Drupal::logger('lightgallery_debug')->warning('Base table NOT FOUND in relationship definition');
+        }
+
+        // Méthode 2 : Via la configuration du champ d'entity_reference.
+        if (!isset($target_entity_type)) {
+          \Drupal::logger('lightgallery_debug')->info('Entity type non trouvé via Méthode 1, essai Méthode 2 (field configuration)');
+
+          // Extraire le nom du champ depuis la table de la relationship.
+          // Format standard: {entity_type}__{field_name} ou {entity_type}_field_{field_name}
+          // Ex: node__field_media_album_av_media.
+          $relationship_table = $relationship->table;
+          \Drupal::logger('lightgallery_debug')->info('Relationship table: @table', ['@table' => $relationship_table]);
+
+          $relationship_field_name = NULL;
+
+          // Pattern 1: entity__field_name (champs multi-value)
+          if (preg_match('/^([a-z_]+)__(.+)$/', $relationship_table, $matches)) {
+            $relationship_field_name = $matches[2];
+            \Drupal::logger('lightgallery_debug')->info('Field name extrait du pattern multi-value: @fname', ['@fname' => $relationship_field_name]);
+          }
+          // Pattern 2: entity_field_name (champs single-value dans les anciennes versions)
+          elseif (preg_match('/^([a-z_]+)_field_(.+)$/', $relationship_table, $matches)) {
+            $relationship_field_name = 'field_' . $matches[2];
+            \Drupal::logger('lightgallery_debug')->info('Field name extrait du pattern single-value: @fname', ['@fname' => $relationship_field_name]);
+          }
+
+          if ($relationship_field_name) {
+            $base_field_storages = $field_manager->getFieldStorageDefinitions($base_entity_type);
+
+            \Drupal::logger('lightgallery_debug')->info('Recherche du champ @fname dans @entity_type', [
+              '@fname' => $relationship_field_name,
+              '@entity_type' => $base_entity_type,
+            ]);
+
+            if (isset($base_field_storages[$relationship_field_name])) {
+              $rel_field_storage = $base_field_storages[$relationship_field_name];
+              $rel_field_type = $rel_field_storage->getType();
+              $rel_field_settings = $rel_field_storage->getSettings();
+
+              \Drupal::logger('lightgallery_debug')->info('Relationship field type: @type, settings: @settings', [
+                '@type' => $rel_field_type,
+                '@settings' => json_encode($rel_field_settings),
+              ]);
+
+              // Si c'est un entity_reference, extraire le target_type.
+              if ($rel_field_type === 'entity_reference' && isset($rel_field_settings['target_type'])) {
+                $target_entity_type = $rel_field_settings['target_type'];
+                \Drupal::logger('lightgallery_debug')->info('✓ Target entity type extrait du champ: @type', ['@type' => $target_entity_type]);
+              }
+              else {
+                \Drupal::logger('lightgallery_debug')->warning('Field @fname n\'est pas un entity_reference ou n\'a pas de target_type', ['@fname' => $relationship_field_name]);
+              }
+            }
+            else {
+              \Drupal::logger('lightgallery_debug')->warning('Field @fname NOT FOUND dans @entity_type', [
+                '@fname' => $relationship_field_name,
+                '@entity_type' => $base_entity_type,
+              ]);
+            }
+          }
+          else {
+            \Drupal::logger('lightgallery_debug')->warning('Impossible d\'extraire le field name depuis la table: @table', ['@table' => $relationship_table]);
+          }
+        }
+
+        // Méthode 3 : Via views_data en dernier recours.
+        if (!isset($target_entity_type)) {
+          \Drupal::logger('lightgallery_debug')->info('Entity type non trouvé via Méthode 2, essai Méthode 3 (views_data)');
+
+          $views_data = \Drupal::service('views.views_data');
+          $relationship_table = $relationship->table;
+          \Drupal::logger('lightgallery_debug')->info('Relationship table: @table', ['@table' => $relationship_table]);
+
+          $table_data = $views_data->get($relationship_table);
+
+          if ($table_data && isset($table_data['table']['entity type'])) {
+            $target_entity_type = $table_data['table']['entity type'];
+            \Drupal::logger('lightgallery_debug')->info('Entity type trouvé via views_data: @type', ['@type' => $target_entity_type]);
+          }
+          else {
+            \Drupal::logger('lightgallery_debug')->warning('Entity type NOT FOUND via views_data');
+          }
+        }
+
+        // 2. Le champ à chercher est celui du HANDLER, pas de la relationship
+        $field_system_name = $handler->field;
+
+        // 3. Récupérer les field storages de l'entité CIBLE
+        if (isset($target_entity_type)) {
+          \Drupal::logger('lightgallery_debug')->info('Chargement field storages pour entity type: @type', ['@type' => $target_entity_type]);
+
+          $field_storages = $field_manager->getFieldStorageDefinitions($target_entity_type);
+
+          \Drupal::logger('lightgallery_debug')->info('Field storages chargées. Recherche du champ: @field', ['@field' => $field_system_name]);
+
+          if (isset($field_storages[$field_system_name])) {
+            \Drupal::logger('lightgallery_debug')->info('✓ Champ @field TROUVÉ dans entity type @type', [
+              '@field' => $field_system_name,
+              '@type' => $target_entity_type,
+            ]);
+          }
+          else {
+            \Drupal::logger('lightgallery_debug')->warning('✗ Champ @field NOT FOUND dans entity type @type. Champs disponibles: @fields', [
+              '@field' => $field_system_name,
+              '@type' => $target_entity_type,
+              '@fields' => implode(', ', array_keys($field_storages)),
+            ]);
+          }
+        }
+        else {
+          \Drupal::logger('lightgallery_debug')->error('ERREUR: target_entity_type non défini (les trois méthodes ont échoué)');
         }
       }
-    }
-    if (!$entity_type_id) {
-      return [$text_fields, $media_fields, $taxo_fields];
-    }
+      // Si pas de relationship, on utilise l'entité de base.
+      else {
+        if ($relationship_id !== 'none') {
+          \Drupal::logger('lightgallery_debug')->warning('Relationship @rel_id spécifiée mais NOT FOUND', ['@rel_id' => $relationship_id]);
+        }
 
+        \Drupal::logger('lightgallery_debug')->info('Pas de relationship, utilisation entity type de base: @type', ['@type' => $entity_type_id]);
+
+        $field_storages = $field_manager->getFieldStorageDefinitions($entity_type_id);
+      }
+
+      if (isset($field_storages[$field_system_name])) {
+        $field_storage = $field_storages[$field_system_name];
+        $field_type = $field_storage->getType();
+        $settings = $field_storage->getSettings();
+
+        if (in_array($field_type, ['string', 'text', 'text_long', 'text_with_summary'])) {
+          $text_fields[$field_system_name] = (string) $field_name;
+        }
+        elseif (
+              $field_type === 'entity_reference' &&
+              $settings['target_type'] === 'media'
+          ) {
+          $media_fields[$field_system_name] = (string) $field_name;
+        }
+        elseif (
+              $field_type === 'entity_reference' &&
+              $settings['target_type'] === 'taxonomy_term'
+          ) {
+          $taxo_fields[$field_system_name] = (string) $field_name;
+        }
+      }
+      /*
+      $field_options[$field_id] = [
+      'label' => $field_label,
+      'system_name' => $field_system_name,
+      'type' => $field_type,
+      'entity_type' => $entity_type_id,
+      'relationship' => $relationship_id,
+      'settings' => $settings,
+      ];
+
+      // Pour les entity_reference.
+      if ($field_type === 'entity_reference') {
+      $field_options[$field_id]['target_type'] = $settings['target_type'] ?? NULL;
+      }
+       */
+    }
+    /* ********************************* */
+    return [$text_fields, $media_fields, $taxo_fields];
+
+    $entity_type_id = $view->getBaseEntityType()->id();
     // Retreive bundle from view filters options.
     $bundle = $view->display_handler->getOption('filters')['type']['value'] ?? NULL;
     if (is_array($bundle)) {
       $bundle = reset($bundle);
-    }
-    if (!$bundle) {
-      return [$text_fields, $media_fields, $taxo_fields];
     }
 
     // 2. load field definitions for the entity and bundle.
@@ -567,6 +807,22 @@ trait ProcessAlbumTrait {
           $taxo_fields[$field_name] = (string) $field_def->getLabel();
         }
       }
+      else {
+        // Pas de fieldDefinition → champ calculé ou relation virtuelle
+        // On peut essayer de deviner à partir du plugin_id ou table.
+        $plugin_id = $handler->getPluginId();
+
+        if (in_array($plugin_id, ['entity_reference_label'])) {
+          $taxo_fields[$field_name] = $handler->adminLabel() ?: $field_name;
+        }
+        elseif (in_array($plugin_id, ['field', 'media_album_av_unified_media'])) {
+          $media_fields[$field_name] = $handler->adminLabel() ?: $field_name;
+        }
+        else {
+          // Par défaut, on peut le considérer comme texte.
+          $text_fields[$field_name] = $handler->adminLabel() ?: $field_name;
+        }
+      }
     }
 
     return [$text_fields, $media_fields, $taxo_fields];
@@ -583,6 +839,8 @@ trait ProcessAlbumTrait {
    *   An array containing arrays of text fields, media fields, taxonomy fields, and number
    */
   protected function getTextAndMediaFieldsCentric($hidden = FALSE) {
+
+    $a = $this->getAvailableFields($hidden);
     // Récupérer tous les champs de la vue.
     $fields = $this->displayHandler->getHandlers('field');
 
@@ -674,6 +932,51 @@ trait ProcessAlbumTrait {
       }
     }
     return [$text_fields, $media_fields, $taxonomy_fields, $number_fields];
+  }
+
+  /**
+   *
+   */
+  public function getAvailableFields(bool $hidden = FALSE): array {
+
+    $handlers = $this->displayHandler->getHandlers('field');
+
+    foreach ($handlers as $field_name => $handler) {
+      $a = $this->getFieldInfo($handler);
+    }
+
+    $out = [
+      'text' => [],
+      'media' => [],
+      'taxonomy' => [],
+      'number' => [],
+      'date' => [],
+    ];
+
+    return $out;
+  }
+
+  /**
+   *
+   */
+  protected function getFieldInfo(EntityField $entityField) {
+    $field_name = $entityField->field;
+    $entity_type = $entityField->getEntityType();
+
+    // Récupérer la définition du stockage du champ.
+    $field_storage = FieldStorageConfig::loadByName($entity_type, $field_name);
+
+    if ($field_storage) {
+      return [
+        'name' => $field_name,
+        'type' => $field_storage->getType(),
+        'entity_type' => $entity_type,
+        'settings' => $field_storage->getSettings(),
+        'cardinality' => $field_storage->getCardinality(),
+      ];
+    }
+
+    return NULL;
   }
 
   /**

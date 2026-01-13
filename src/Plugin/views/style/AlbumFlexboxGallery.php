@@ -122,7 +122,7 @@ class AlbumFlexboxGallery extends StylePluginBase {
     }
 
     // Get available fields from the view, excluding hidden fields.
-    [$fields_text, $fields_media, $fields_taxo, $fields_number] = $this->getTextAndMediaFields(TRUE);
+    [$fields_text, $fields_media, $fields_taxo] = $this->getTextAndMediaFields();
 
     // Image styles for thumbnails.
     $image_styles = ImageStyle::loadMultiple();
@@ -257,6 +257,8 @@ class AlbumFlexboxGallery extends StylePluginBase {
       ],
     ];
 
+    // Media field should not have an mid == null.
+    // Hide empty results in views itself.
     // Get grouped results from Views.
     $grouped_rows = $this->renderGrouping(
     $this->view->result,
@@ -268,6 +270,9 @@ class AlbumFlexboxGallery extends StylePluginBase {
     $build['#groups'] = $this->processGroupRecursive($grouped_rows,
         $build,
         $build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']);
+
+    // Filter out empty groups recursively (groups without albums and without subgroups).
+    $build['#groups'] = $this->filterEmptyGroups($build['#groups']);
 
     foreach ($build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']['plugins'] ?? [] as $plugin_name => $plugin) {
       $build['#attached']['library'][] = $plugin;
@@ -341,12 +346,57 @@ class AlbumFlexboxGallery extends StylePluginBase {
   }
 
   /**
+   * Recursively filter out empty groups and albums without medias.
+   *
+   * Removes groups that have no albums with medias and no non-empty subgroups.
+   * Also filters albums that have no medias.
+   *
+   * @param array $groups
+   *   The groups array to filter.
+   *
+   * @return array
+   *   Filtered groups array with empty groups/albums removed.
+   */
+  private function filterEmptyGroups(array $groups) {
+    $filtered = [];
+
+    foreach ($groups as $group) {
+      // Filter albums: keep only those with medias.
+      $filtered_albums = [];
+      if (!empty($group['albums'])) {
+        foreach ($group['albums'] as $album) {
+          if (!empty($album['medias'])) {
+            $filtered_albums[] = $album;
+          }
+        }
+      }
+
+      // Recursively filter subgroups.
+      $filtered_subgroups = [];
+      if (!empty($group['subgroups'])) {
+        $filtered_subgroups = $this->filterEmptyGroups($group['subgroups']);
+      }
+
+      // Only keep the group if it has albums with medias OR non-empty subgroups.
+      if (!empty($filtered_albums) || !empty($filtered_subgroups)) {
+        $group['albums'] = $filtered_albums;
+        $group['subgroups'] = $filtered_subgroups;
+        $filtered[] = $group;
+      }
+    }
+
+    return $filtered;
+  }
+
+  /**
    * {@inheritdoc}
    * Override to ensure the value used for grouping is a
    * simple string, thus avoiding the 'TypeError' caused by using a
    * Markup object as an array key.
    */
   public function renderGrouping($records, $groupings = [], $group_rendered = NULL) {
+
+    return parent::renderGrouping($records, $groupings, $group_rendered);
 
     // 1. Force the use of the raw field value for grouping.
     $cleaned_grouping = $groupings;
@@ -355,6 +405,7 @@ class AlbumFlexboxGallery extends StylePluginBase {
         if (is_array($grouping_info) && isset($grouping_info['rendered'])) {
           // This line is crucial: it tells the parent method not to use the HTML rendering.
           $cleaned_grouping[$key]['rendered'] = FALSE;
+          $cleaned_grouping[$key]['value'] = TRUE;
         }
       }
     }
