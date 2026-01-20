@@ -7,8 +7,6 @@ use Drupal\views\Plugin\views\style\StylePluginBase;
 use Drupal\Core\File\FileUrlGeneratorInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
-
-
 use Drupal\image\Entity\ImageStyle;
 use Drupal\lightgallery_settings_ui\Traits\LightGallerySettingsTrait as LightGallerySettingsTrait;
 use Drupal\lightgallery_views_flex_justified\Traits\ProcessAlbumTrait;
@@ -397,25 +395,6 @@ class AlbumFlexboxGallery extends StylePluginBase {
   public function renderGrouping($records, $groupings = [], $group_rendered = NULL) {
 
     return parent::renderGrouping($records, $groupings, $group_rendered);
-
-    // 1. Force the use of the raw field value for grouping.
-    $cleaned_grouping = $groupings;
-    if (!empty($cleaned_grouping)) {
-      foreach ($cleaned_grouping as $key => $grouping_info) {
-        if (is_array($grouping_info) && isset($grouping_info['rendered'])) {
-          // This line is crucial: it tells the parent method not to use the HTML rendering.
-          $cleaned_grouping[$key]['rendered'] = FALSE;
-          $cleaned_grouping[$key]['value'] = TRUE;
-        }
-      }
-    }
-
-    // 2. Avoid executing the backward compatibility block (where the error occurs).
-    // This forces $group_rendered to a non-NULL value, disabling the buggy loop.
-    $group_rendered_fixed = $group_rendered ?? FALSE;
-
-    // Call the parent method with the corrected parameters.
-    return parent::renderGrouping($records, $cleaned_grouping, $group_rendered_fixed);
   }
 
 }
