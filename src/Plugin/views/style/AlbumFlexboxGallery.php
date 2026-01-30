@@ -6,6 +6,8 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\style\StylePluginBase;
 use Drupal\Core\File\FileUrlGeneratorInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\media_album_av_common\Service\AlbumGroupingConfigService;
+use Drupal\node\Entity\Node;
 
 use Drupal\image\Entity\ImageStyle;
 use Drupal\lightgallery_settings_ui\Traits\LightGallerySettingsTrait as LightGallerySettingsTrait;
@@ -32,6 +34,14 @@ class AlbumFlexboxGallery extends StylePluginBase {
    * @var \Drupal\Core\File\FileUrlGeneratorInterface
    */
   protected FileUrlGeneratorInterface $fileUrlGenerator;
+
+  /**
+   * The grouping config service.
+   *
+   * @var \Drupal\media_album_av_common\Service\AlbumGroupingConfigService
+   */
+  protected AlbumGroupingConfigService $groupingConfigService;
+
 
   /**
    * {@inheritdoc}
@@ -65,9 +75,10 @@ class AlbumFlexboxGallery extends StylePluginBase {
    * @param \Drupal\Core\File\FileUrlGeneratorInterface $file_url_generator
    *   The file URL generator service.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, FileUrlGeneratorInterface $file_url_generator) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, FileUrlGeneratorInterface $file_url_generator, AlbumGroupingConfigService $grouping_config_service) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->fileUrlGenerator = $file_url_generator;
+    $this->groupingConfigService = $grouping_config_service;
   }
 
   /**
@@ -78,7 +89,8 @@ class AlbumFlexboxGallery extends StylePluginBase {
           $configuration,
           $plugin_id,
           $plugin_definition,
-          $container->get('file_url_generator')
+          $container->get('file_url_generator'),
+          $container->get('media_album_av_common.album_grouping_config')
       );
   }
 
@@ -255,19 +267,18 @@ class AlbumFlexboxGallery extends StylePluginBase {
       ],
     ];
 
-    // Media field should not have an mid == null.
-    // Hide empty results in views itself.
-    // Get grouped results from Views.
-    $grouped_rows = $this->renderGrouping(
-    $this->view->result,
-    $this->options['grouping'],
-    TRUE
-    );
+    // Vérifier si NID est présent dans les résultats.
+    $nid_field = $this->getNidFieldName();
 
-    // Recursively process the grouped structure.
-    $build['#groups'] = $this->processGroupRecursive($grouped_rows,
-        $build,
-        $build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']);
+    if ($nid_field) {
+      // Mode "regroupement par album" spécifique à chaque node.
+      $build['#groups'] = $this->renderWithPerNodeGrouping($nid_field, $build, $build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']);
+    }
+    else {
+      // Mode standard : utiliser les champs de regroupement de la vue.
+      $grouped_rows = $this->renderGrouping($this->view->result, $this->options['grouping'], TRUE);
+      $build['#groups'] = $this->processGroupRecursive($grouped_rows, $build, $build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']);
+    }
 
     // Filter out empty groups recursively (groups without albums and without subgroups).
     $build['#groups'] = $this->filterEmptyGroups($build['#groups']);
@@ -395,6 +406,164 @@ class AlbumFlexboxGallery extends StylePluginBase {
   public function renderGrouping($records, $groupings = [], $group_rendered = NULL) {
 
     return parent::renderGrouping($records, $groupings, $group_rendered);
+  }
+
+  /**
+   * Render results grouping by NID first, then by each node's specific grouping config.
+   *
+   * @param string $nid_field
+   *   The field name/key for NID in the view results.
+   * @param array &$build
+   *   The build array.
+   * @param array &$lightgallery_settings
+   *   The lightgallery settings reference.
+   *
+   * @return array
+   *   The merged groups from all nodes.
+   */
+  protected function renderWithPerNodeGrouping($nid_field, array &$build, array &$lightgallery_settings) {
+    // PREMIÈRE PASSE : Grouper uniquement par NID.
+    $nid_grouping = [
+      [
+        'field' => $nid_field,
+        'rendered' => TRUE,
+        'rendered_strip' => FALSE,
+      ],
+    ];
+
+    $grouped_by_nid = $this->renderGrouping($this->view->result, $nid_grouping, TRUE);
+
+    $all_groups = [];
+
+    // DEUXIÈME PASSE : Pour chaque NID (chaque album)
+    foreach ($grouped_by_nid as $nid_group) {
+      // Récupérer les rows de ce groupe.
+      $rows = $nid_group['rows'] ?? [];
+      if (empty($rows)) {
+        continue;
+      }
+
+      // Extraire le NID depuis la première row.
+      $first_row = reset($rows);
+      $nid = $this->getFieldValueFromRow($first_row, $nid_field);
+
+      if (!$nid || !is_numeric($nid)) {
+        continue;
+      }
+
+      $node = Node::load($nid);
+      if (!$node) {
+        continue;
+      }
+
+      // Récupérer la config de regroupement spécifique à ce node.
+      $node_grouping_fields = $this->groupingConfigService->getAlbumGroupingFields($node);
+
+      if (!empty($node_grouping_fields)) {
+        $grouping = $this->convertFieldsToViewGrouping($node_grouping_fields);
+      }
+      else {
+        // Si pas de config spécifique, ne pas regrouper davantage.
+        $grouping = [];
+      }
+
+      // Traiter uniquement ces rows avec la config de l'album.
+      $result = array_values($rows);
+      $result = $rows;
+      $album_groups_raw = $this->renderGrouping($result, $grouping, TRUE);
+
+      // IMPORTANT : Appeler processGroupRecursive sur CE sous-groupe spécifique.
+      $album_groups_processed = $this->processGroupRecursive($album_groups_raw, $build, $lightgallery_settings);
+
+      // Wrapper dans un niveau parent (l'album) - level -1 pour le différencier.
+      if (!empty($album_groups_processed)) {
+        /* $all_groups[] = [
+        // Ou juste $node->getTitle() si vous ne voulez pas de lien.
+        'title' => $node->toLink()->toString(),
+        // Niveau spécial pour l'album (géré dans votre Twig)
+        'level' => -1,
+        'groupid' => 'album-node-' . $nid,
+        'subgroups' => $album_groups_processed,
+        'albums' => [],
+        'nid' => $nid,
+        ]; */
+        $all_groups = array_merge($all_groups, $album_groups_processed);
+      }
+    }
+
+    return $all_groups;
+  }
+
+  /**
+   * Trouve le nom du champ NID dans les handlers de la vue.
+   *
+   * @return string|null
+   *   Le nom du champ ou NULL si non trouvé.
+   */
+  protected function getNidFieldName() {
+    foreach ($this->displayHandler->getHandlers('field') as $field_name => $handler) {
+      // Cherche nid dans field ou realField.
+      if (isset($handler->field) && $handler->field === 'nid') {
+        return $field_name;
+      }
+      if (isset($handler->realField) && $handler->realField === 'nid') {
+        return $field_name;
+      }
+    }
+    return NULL;
+  }
+
+  /**
+   * Récupère la valeur d'un champ depuis une row.
+   *
+   * @param object $row
+   *   The view row.
+   * @param string $field_name
+   *   The field name/key.
+   *
+   * @return mixed
+   *   The field value.
+   */
+  protected function getFieldValueFromRow($row, $field_name) {
+    // Si c'est une propriété directe (nid sur node)
+    if (isset($row->$field_name)) {
+      return $row->$field_name;
+    }
+    // Si c'est dans _entity.
+    if (isset($row->_entity) && $row->_entity->hasField($field_name)) {
+      return $row->_entity->get($field_name)->value;
+    }
+    // Si c'est dans le rendered output (plus complexe, nécessite le field handler)
+    if (isset($this->view->field[$field_name])) {
+      return $this->view->field[$field_name]->getValue($row);
+    }
+    return NULL;
+  }
+
+  /**
+   * Convertit les champs de regroupement du service en format attendu par renderGrouping.
+   *
+   * @param array $grouping_fields
+   *   Array de champs préfixés (ex: ['node:field_event', 'media:field_author']).
+   *
+   * @return array
+   *   Format attendu par $this->options['grouping'].
+   */
+  protected function convertFieldsToViewGrouping(array $grouping_fields) {
+    $grouping = [];
+
+    foreach ($grouping_fields as $delta => $prefixed_field) {
+      // Retirer le préfixe node: ou media:
+      $clean_field = preg_replace('/^(node|media):/', '', $prefixed_field);
+
+      $grouping[$delta] = [
+        'field' => $clean_field,
+        'rendered' => TRUE,
+        'rendered_strip' => FALSE,
+      ];
+    }
+
+    return $grouping;
   }
 
 }
