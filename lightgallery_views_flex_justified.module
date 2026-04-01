@@ -170,3 +170,30 @@ function lightgallery_views_flex_justified_preprocess_image(array &$variabes): v
   unset($variabes['attributes']['data-is-video-thumbnail']);
 }
 
+/**
+ * Implements hook_file_download().
+ */
+function ___lightgallery_views_flex_justified_file_download($uri) {
+  $request = \Drupal::request();
+  $token_sent = $request->query->get('s_t');
+  $render_id = $request->query->get('s_id');
+
+  if ($token_sent && $render_id) {
+    $session_id = \Drupal::service('session_manager')->getId();
+    $private_key = \Drupal::service('private_key')->get();
+
+    // On vérifie si le token envoyé est bien le HMAC du render_id fourni
+    $expected_token = \Drupal\Component\Utility\Crypt::hmacBase64($render_id, $session_id . $private_key);
+
+    if (hash_equals($expected_token, $token_sent)) {
+      return [
+        'file' => $uri,
+        'headers' => [
+          'Content-Disposition' => 'attachment; filename="' . basename($uri) . '"',
+        ],
+      ];
+    }
+  }
+  return -1;
+}
+

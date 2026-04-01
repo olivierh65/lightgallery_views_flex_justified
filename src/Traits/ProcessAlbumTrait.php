@@ -128,7 +128,7 @@ trait ProcessAlbumTrait {
 
       // Get the media entity from the row.
       $media = NULL;
-      
+
       // Vérifier d'abord si le média est dans _relationship_entities (nouvelle structure)
       if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
         // Chercher le champ de relationship (ex: field_media_album_av_media)
@@ -139,12 +139,12 @@ trait ProcessAlbumTrait {
           }
         }
       }
-      
-      // Fallback: ancienne structure où le média était dans _entity
+
+      // Fallback: ancienne structure où le média était dans _entity.
       if (!$media && isset($row->_entity) && $row->_entity instanceof MediaInterface) {
         $media = $row->_entity;
       }
-      
+
       if (!$media) {
         continue;
       }
@@ -183,6 +183,7 @@ trait ProcessAlbumTrait {
 
     // Use first media's thumbnail as album image.
     $image_url = $medias[0]['thumbnail'] ?? $medias[0]['url'] ?? '';
+    $image_url_id = $medias[0]['media_id'] ?? '';
 
     // Get lightgallery settings.
     $lightgallery_settings = $this->getLightgallerySettings($first_media);
@@ -198,11 +199,13 @@ trait ProcessAlbumTrait {
     return [
       'id' => $album_id,
       'image_url' => $image_url,
+      'image_url_id' => $image_url_id,
       'title' => $title,
       'author' => $author,
       'description' => $description,
       'url' => '',
       'medias' => $medias,
+      'nid' => ($nid_values = $row->_entity->get('nid')->getValue()) ? reset($nid_values)['value'] ?? '' : '',
     ];
   }
 
@@ -224,7 +227,7 @@ trait ProcessAlbumTrait {
 
     // Get the media entity from the row.
     $media = NULL;
-    
+
     // Vérifier d'abord si le média est dans _relationship_entities (nouvelle structure)
     if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
       // Chercher le champ de relationship (ex: field_media_album_av_media)
@@ -235,8 +238,8 @@ trait ProcessAlbumTrait {
         }
       }
     }
-    
-    // Fallback: ancienne structure où le média était dans _entity
+
+    // Fallback: ancienne structure où le média était dans _entity.
     if (!$media && isset($row->_entity) && $row->_entity instanceof MediaInterface) {
       $media = $row->_entity;
     }
@@ -337,6 +340,7 @@ trait ProcessAlbumTrait {
             'alt' => $media->get($source_field)->first()->get('alt')->getValue() ?? '',
             'title' => $media->get($source_field)->first()->get('title')->getValue() ?? '',
             'thumbnail' => $thumbnail_url,
+            'media_id' => $media->id(),
           ];
         }
         break;
@@ -368,6 +372,7 @@ trait ProcessAlbumTrait {
             'mime_type' => $file->getMimeType(),
             'thumbnail' => $thumbnail_url,
             'title' => $media->get($source_field)->first()->get('description')->getValue() ?? '',
+            'media_id' => $media->id(),
           ];
         }
         break;
