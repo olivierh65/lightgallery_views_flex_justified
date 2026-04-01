@@ -8,6 +8,7 @@ use Drupal\Core\File\FileUrlGeneratorInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\media_album_av_common\Service\AlbumGroupingConfigService;
 use Drupal\node\Entity\Node;
+use Drupal\Component\Utility\Crypt;
 
 use Drupal\image\Entity\ImageStyle;
 use Drupal\lightgallery_settings_ui\Traits\LightGallerySettingsTrait as LightGallerySettingsTrait;
@@ -291,8 +292,51 @@ class AlbumFlexboxGallery extends StylePluginBase {
       'captions' => $this->options['image']['captions'] ?? TRUE,
     ];
 
+    // 1. Préparer les éléments de sécurité uniques pour ce rendu
+    $session_id = \Drupal::service('session_manager')->getId();
+    $private_key = \Drupal::service('private_key')->get();
+    $render_id = Crypt::randomBytesBase64(8);
+    $s_token = Crypt::hmacBase64($render_id, $session_id . $private_key);
+
+    // 2. Injecter récursivement via la méthode privée
+    $this->injectSecurityTokens($build['#groups'], $s_token, $render_id);
+
+    // 3. Sécuriser le cache
+    $build['#cache']['contexts'][] = 'session';
+
     unset($this->view->row_index);
     return $build;
+  }
+
+  /**
+   * Inject security tokens recursively into the groups structure.
+   *
+   * @param array $groups
+   *   The groups array to process.
+   * @param string $s_token
+   *   The generated HMAC token.
+   * @param string $render_id
+   *   The random render ID.
+   */
+  private function injectSecurityTokens(array &$groups, string $s_token, string $render_id) {
+    foreach ($groups as &$group) {
+      // On injecte les tokens au niveau du groupe.
+      $group['s_token'] = $s_token;
+      $group['s_id'] = $render_id;
+
+      // Si le groupe contient des albums, on les marque aussi.
+      if (!empty($group['albums'])) {
+        foreach ($group['albums'] as &$album) {
+          $album['s_token'] = $s_token;
+          $album['s_id'] = $render_id;
+        }
+      }
+
+      // Si on a des sous-groupes, on descend d'un niveau (récursivité)
+      if (!empty($group['subgroups'])) {
+        $this->injectSecurityTokens($group['subgroups'], $s_token, $render_id);
+      }
+    }
   }
 
   /**
