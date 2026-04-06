@@ -284,6 +284,9 @@ class AlbumFlexboxGallery extends StylePluginBase {
     // Filter out empty groups recursively (groups without albums and without subgroups).
     $build['#groups'] = $this->filterEmptyGroups($build['#groups']);
 
+    // Sort groups by node grouping configuration (using terms_rendered).
+    $build['#groups'] = $this->sortGroupsByNodeGrouping($build['#groups'], $nid_field);
+
     foreach ($build['#attached']['drupalSettings']['settings']['lightgallery']['albums_settings']['plugins'] ?? [] as $plugin_name => $plugin) {
       $build['#attached']['library'][] = $plugin;
     }
@@ -453,6 +456,142 @@ class AlbumFlexboxGallery extends StylePluginBase {
   }
 
   /**
+   * Sort groups by node grouping configuration using terms_rendered.
+   *
+   * @param array $groups
+   *   The groups to sort.
+   * @param string|null $nid_field
+   *   The NID field name from the view.
+   *
+   * @return array
+   *   The sorted groups.
+   */
+  protected function sortGroupsByNodeGrouping(array $groups, ?string $nid_field): array {
+    if (empty($groups) || !$nid_field) {
+      return $groups;
+    }
+
+    // Group by nid from albums and recurse into subgroups.
+    $nid_to_config = [];
+
+    // Collect all NIDs from albums to build configuration map once.
+    $this->collectNidsForConfiguration($groups, $nid_to_config);
+
+    // Sort the groups using the configuration.
+    return $this->sortGroupsRecursive($groups, $nid_to_config);
+  }
+
+  /**
+   * Collect NIDs from groups for configuration loading.
+   *
+   * @param array $groups
+   *   The groups to collect from.
+   * @param array &$nid_to_config
+   *   Map to populate with NID => configuration.
+   */
+  private function collectNidsForConfiguration(array $groups, array &$nid_to_config) {
+    foreach ($groups as $group) {
+      // Collect NIDs from albums.
+      if (!empty($group['albums'])) {
+        foreach ($group['albums'] as $album) {
+          if (!empty($album['nid']) && !isset($nid_to_config[$album['nid']])) {
+            $node = Node::load($album['nid']);
+            if ($node) {
+              $nid_to_config[$album['nid']] = $this->groupingConfigService->getAlbumGroupingFieldsConfig($node);
+            }
+          }
+        }
+      }
+
+      // Recurse into subgroups.
+      if (!empty($group['subgroups'])) {
+        $this->collectNidsForConfiguration($group['subgroups'], $nid_to_config);
+      }
+    }
+  }
+
+  /**
+   * Recursively sort groups using node configuration.
+   *
+   * @param array $groups
+   *   The groups to sort.
+   * @param array $nid_to_config
+   *   Map of NID => configuration.
+   *
+   * @return array
+   *   The sorted groups.
+   */
+  private function sortGroupsRecursive(array $groups, array $nid_to_config): array {
+    // First, collect the NID for this level (from first album if any).
+    $nid = NULL;
+    foreach ($groups as $group) {
+      if (!empty($group['albums'])) {
+        foreach ($group['albums'] as $album) {
+          if (!empty($album['nid'])) {
+            $nid = $album['nid'];
+            break 2;
+          }
+        }
+      }
+    }
+
+    // Get the configuration for this NID.
+    $config = $nid && isset($nid_to_config[$nid]) ? $nid_to_config[$nid] : [];
+
+    // Build config_order: a map where each term label gets its position in the config.
+    // For each level in config, we use the order of terms_rendered.
+    $config_order = [];
+    $position = 0;
+    foreach ($config as $level => $field_config) {
+      if (!empty($field_config['terms_rendered'])) {
+        // terms_rendered maintains the order of term IDs.
+        foreach ($field_config['terms_rendered'] as $rendered_label) {
+          $config_order[$rendered_label] = $position++;
+        }
+      }
+    }
+
+    // Build two arrays: positioned and unpositioned groups.
+    $positioned = [];
+    $unpositioned = [];
+
+    foreach ($groups as $group) {
+      $title = trim(strip_tags($group['title'] ?? ''));
+
+      if (isset($config_order[$title])) {
+        // Position this group at its configured position.
+        $pos = $config_order[$title];
+        $positioned[$pos] = $group;
+      }
+      else {
+        // Groups not in config go to unpositioned.
+        $unpositioned[] = $group;
+      }
+    }
+
+    // Sort positioned by position.
+    ksort($positioned);
+
+    // Merge: positioned groups first (in order), then unpositioned (alphabetical).
+    usort($unpositioned, function ($a, $b) {
+      $title_a = trim(strip_tags($a['title'] ?? ''));
+      $title_b = trim(strip_tags($b['title'] ?? ''));
+      return strcmp($title_a, $title_b);
+    });
+
+    $sorted = array_merge($positioned, $unpositioned);
+
+    // Recursively sort subgroups.
+    foreach ($sorted as &$group) {
+      if (!empty($group['subgroups'])) {
+        $group['subgroups'] = $this->sortGroupsRecursive($group['subgroups'], $nid_to_config);
+      }
+    }
+
+    return $sorted;
+  }
+
+  /**
    * Render results grouping by NID first, then by each node's specific grouping config.
    *
    * @param string $nid_field
@@ -531,6 +670,7 @@ class AlbumFlexboxGallery extends StylePluginBase {
         'albums' => [],
         'nid' => $nid,
         ]; */
+
         $all_groups = array_merge($all_groups, $album_groups_processed);
       }
     }
@@ -585,19 +725,32 @@ class AlbumFlexboxGallery extends StylePluginBase {
   }
 
   /**
-   * Convertit les champs de regroupement du service en format attendu par renderGrouping.
+   * Convert grouping fields from service to renderGrouping format.
    *
    * @param array $grouping_fields
-   *   Array de champs préfixés (ex: ['node:field_event', 'media:field_author']).
+   *   Array with structure:
+   *   [
+   *     ['field' => 'node:field_event', 'terms' => ['1' => 0, ...]],
+   *     ['field' => 'media:field_author', 'terms' => []],
+   *   ].
    *
    * @return array
-   *   Format attendu par $this->options['grouping'].
+   *   Format expected by $this->options['grouping'].
    */
   protected function convertFieldsToViewGrouping(array $grouping_fields) {
     $grouping = [];
 
-    foreach ($grouping_fields as $delta => $prefixed_field) {
-      // Retirer le préfixe node: ou media:
+    foreach ($grouping_fields as $delta => $field_data) {
+      // Support new format: ['field' => '...', 'terms' => [...]].
+      if (is_array($field_data) && isset($field_data['field'])) {
+        $prefixed_field = $field_data['field'];
+      }
+      else {
+        // Fallback for legacy format: simple string.
+        $prefixed_field = $field_data;
+      }
+
+      // Remove the prefix node: or media:.
       $clean_field = preg_replace('/^(node|media):/', '', $prefixed_field);
 
       $grouping[$delta] = [
