@@ -643,7 +643,7 @@ class AlbumFlexboxGallery extends StylePluginBase {
       $node_grouping_fields = $this->groupingConfigService->getAlbumGroupingFields($node);
 
       if (!empty($node_grouping_fields)) {
-        $grouping = $this->convertFieldsToViewGrouping($node_grouping_fields);
+        $grouping = $this->groupingConfigService->convertFieldsToViewGrouping($node_grouping_fields, TRUE);
       }
       else {
         // Si pas de config spécifique, ne pas regrouper davantage.
@@ -722,45 +722,6 @@ class AlbumFlexboxGallery extends StylePluginBase {
       return $this->view->field[$field_name]->getValue($row);
     }
     return NULL;
-  }
-
-  /**
-   * Convert grouping fields from service to renderGrouping format.
-   *
-   * @param array $grouping_fields
-   *   Array with structure:
-   *   [
-   *     ['field' => 'node:field_event', 'terms' => ['1' => 0, ...]],
-   *     ['field' => 'media:field_author', 'terms' => []],
-   *   ].
-   *
-   * @return array
-   *   Format expected by $this->options['grouping'].
-   */
-  protected function convertFieldsToViewGrouping(array $grouping_fields) {
-    $grouping = [];
-
-    foreach ($grouping_fields as $delta => $field_data) {
-      // Support new format: ['field' => '...', 'terms' => [...]].
-      if (is_array($field_data) && isset($field_data['field'])) {
-        $prefixed_field = $field_data['field'];
-      }
-      else {
-        // Fallback for legacy format: simple string.
-        $prefixed_field = $field_data;
-      }
-
-      // Remove the prefix node: or media:.
-      $clean_field = preg_replace('/^(node|media):/', '', $prefixed_field);
-
-      $grouping[$delta] = [
-        'field' => $clean_field,
-        'rendered' => TRUE,
-        'rendered_strip' => FALSE,
-      ];
-    }
-
-    return $grouping;
   }
 
 }
