@@ -27,5 +27,3 @@ flexbox:
   css:
     theme:
       css/flexbox.css: { minified: false }
-  dependencies:
-    - media_album_av_common/draggable-flexgrid
