@@ -37,30 +37,21 @@
 				{# ---- ALBUMS OF THE GROUP ---- #}
 				{% if has_albums %}
 					{% for album in group.albums %}
-						{# IMPORTANT : On calcule les variables ICI, à l'intérieur de la boucle album #}
-                    	{% set security_query = 's_t=' ~ album.s_token ~ '&s_id=' ~ album.s_id  ~ '&n_id=' ~ album.nid %}
-
 						<div class="flexbox-item album-item">
 
 							<a href="#" class="album-cover" data-album-id="{{ album.id }}" data-once="lg-album">
-							<span class="album-title">{{ album.title }}</span>
-							{% if album.image_url %}
-                                {# On gère le séparateur dynamiquement pour la couverture #}
-                                {% set cover_sep = (album.image_url|split('?')|length > 1) ? '&' : '?' %}
-                                <img src="{{ album.image_url }}{{ cover_sep }}{{ security_query }}&m_id={{ album.image_url_id }}" class="album-img" loading="lazy" alt="{{ album.title }}">
-                            {% endif %}
+								<span class="album-title">{{ album.title }}</span>
+								{% if album.image_url %}
+									<img src="{{ album.image_url }}" class="album-img" loading="lazy" alt="{{ album.title }}">
+								{% endif %}
 							</a>
 
 							{# LightGallery container #}
 							<div id="{{ album.id }}" class="lightgallery-album" style="display:none;">
 								{% for media in album.medias %}
-									{# On gère les séparateurs pour chaque média #}
-                                	{% set url_sep = (media.url|split('?')|length > 1) ? '&' : '?' %}
-                                	{% set thumb_sep = (media.thumbnail|split('?')|length > 1) ? '&' : '?' %}
-
 									{% if media.mime_type starts with 'image/' %}
-										<a href="{{ media.url }}{{ url_sep }}{{ security_query }}&m_id={{ media.media_id }}" class="lightgallery__item" data-sub-html=".lightgallery_caption">
-                                        <img loading="lazy" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}">
+										<a href="{{ media.url }}" class="lightgallery__item" data-sub-html=".lightgallery_caption">
+											<img loading="lazy" src="{{ media.thumbnail }}">
 											<div class="lightgallery_caption">
 												<h4>{{ media.title|default('') }}</h4>
 												{% if media.alt %}
@@ -72,11 +63,9 @@
 											</div>
 										</a>
 									{% elseif media.mime_type starts with 'video/' %}
-										<a class="lightgallery__item" data-sub-html=".lightgallery_caption"
-										data-poster="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}"
-										data-video='{"source": [{"src":"{{ media.url }}{{ url_sep }}{{ security_query }}&m_id={{ media.media_id }}","type":"{{ media.mime_type }}"}], "attributes": {"preload": false, "playsinline": true, "controls": true}}' title="{{ media.title|default('') }}">
+										<a class="lightgallery__item" data-sub-html=".lightgallery_caption" data-poster="{{ media.thumbnail|default('') }}" data-video='{"source": [{"src":"{{ media.url }}","type":"{{ media.mime_type }}"}], "attributes": {"preload": false, "playsinline": true, "controls": true}}' title="{{ media.title|default('') }}">
 											{% if media.thumbnail %}
-												<img loading="lazy" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}"/>
+												<img loading="lazy" src="{{ media.thumbnail }}"/>
 											{% endif %}
 											<div class="lightgallery_caption">
 												<h4>{{ media.title|default('') }}</h4>
