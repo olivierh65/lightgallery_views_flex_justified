@@ -38,6 +38,22 @@
               if (window[name]) plugins.push(window[name]);
             });
 
+            // Avant d'initialiser lightgallery, remplacer data-thumb par placeholder.
+const PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const VISIBLE_COUNT = 6;
+
+const items = $album[0].querySelectorAll('a.lightgallery__item');
+const deferredThumbs = new Map();
+
+items.forEach((item, index) => {
+  if (index < VISIBLE_COUNT) return;
+  const thumb = item.getAttribute('data-thumb');
+  if (thumb) {
+    deferredThumbs.set(index, thumb);
+    item.setAttribute('data-thumb', PLACEHOLDER);
+  }
+});
+
             const instance = window.lightGallery($album[0], {
               ...albumSettings,
               selector: "a",
@@ -46,21 +62,34 @@
               preload: 1,
             });
 
-            $album[0].addEventListener('lgAfterOpen', () => {
-              const thumbContainer = document.querySelector('.lg-outer .lg-thumb-outer');
-              console.log(`[ThumbLazy] lgAfterOpen — album: ${albumId}`);
-              if (thumbContainer) {
-                lazyLoadThumbnails(thumbContainer, albumId);
-              }
-            });
+            // Après ouverture, restaurer les vrais data-thumb et lancer le lazy loading.
+$album[0].addEventListener('lgAfterOpen', () => {
+  // Restaurer les data-thumb originaux dans le HTML source.
+  items.forEach((item, index) => {
+    if (deferredThumbs.has(index)) {
+      item.setAttribute('data-thumb', deferredThumbs.get(index));
+    }
+  });
 
-            $album[0].addEventListener('lgAfterClose', () => {
-              const thumbContainer = document.querySelector('.lg-outer .lg-thumb-outer');
-              if (thumbContainer) {
-                delete thumbContainer.dataset.lazyInit;
-                console.log(`[ThumbLazy] lgAfterClose — reset for album: ${albumId}`);
-              }
-            });
+  // Maintenant lancer le lazy loading sur les .lg-thumb-item générés.
+  const thumbContainer = document.querySelector('.lg-outer .lg-thumb-outer');
+  console.log(`[ThumbLazy] lgAfterOpen — album: ${albumId}`);
+  if (thumbContainer) {
+    $album.data('thumbContainer', thumbContainer);
+    lazyLoadThumbnails(thumbContainer, albumId, deferredThumbs);
+  }
+});
+
+
+$album[0].addEventListener('lgAfterClose', () => {
+  // Utiliser la référence stockée plutôt que querySelector.
+  const thumbContainer = $album.data('thumbContainer');
+  if (thumbContainer) {
+    delete thumbContainer.dataset.lazyInit;
+    $album.removeData('thumbContainer');
+    console.log(`[ThumbLazy] lgAfterClose — reset for album: ${albumId}`);
+  }
+});
 
             $album.data("lightGallery", instance);
           }
@@ -73,7 +102,7 @@
     },
   };
 
-  function lazyLoadThumbnails(thumbContainer, albumId) {
+  function lazyLoadThumbnails(thumbContainer, albumId, deferredThumbs) {
     if (!thumbContainer || thumbContainer.dataset.lazyInit) return;
     thumbContainer.dataset.lazyInit = 'true';
 
@@ -191,55 +220,46 @@
     }
 
     // Init.
-    const items = thumbContainer.querySelectorAll('.lg-thumb-item');
-    console.log(`[ThumbLazy:${albumId}] Init — thumbnails: ${items.length}, visible: ${VISIBLE_COUNT}, max concurrent: ${MAX_CONCURRENT}`);
+    // Les .lg-thumb-item sont générés par lightgallery dans l'ordre des slides.
+  const lgItems = thumbContainer.querySelectorAll('.lg-thumb-item');
+  console.log(`[ThumbLazy:${albumId}] Init — lg-thumb-items: ${lgItems.length}, deferred: ${deferredThumbs.size}, max concurrent: ${MAX_CONCURRENT}`);
 
-    // Différer les thumbnails au-delà de VISIBLE_COUNT.
-    items.forEach((item, index) => {
-      if (index < VISIBLE_COUNT) return;
-      const img = item.querySelector('img');
-      if (!img || !img.src || img.src === PLACEHOLDER) return;
-      img.dataset.lazySrc = img.src;
+  lgItems.forEach((item, index) => {
+    const img = item.querySelector('img');
+    if (!img) return;
+
+    if (deferredThumbs.has(index)) {
+      // Cet item avait été remplacé par un placeholder — injecter la vraie URL.
+      const realSrc = deferredThumbs.get(index);
+      img.dataset.lazySrc = realSrc;
       img.src = PLACEHOLDER;
-      console.log(`[ThumbLazy:${albumId}] DEFERRED #${index}:`, img.dataset.lazySrc.split('/').pop().split('?')[0]);
-    });
+      console.log(`[ThumbLazy:${albumId}] DEFERRED #${index}:`, realSrc.split('/').pop().split('?')[0]);
+    }
+  });
 
-    // Charger les premières VISIBLE_COUNT via la file.
-    items.forEach((item, index) => {
-      if (index >= VISIBLE_COUNT) return;
-      const img = item.querySelector('img');
-      if (img && img.src && img.src !== PLACEHOLDER) {
-        const realSrc = img.src;
-        img.dataset.lazySrc = realSrc;
-        img.src = PLACEHOLDER;
-        console.log(`[ThumbLazy:${albumId}] INITIAL LOAD #${index}:`, realSrc.split('/').pop().split('?')[0]);
+  // Charger les items visibles (non différés) + observer les différés.
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target.querySelector('img[data-lazy-src]');
+      if (img) {
+        const index = Array.from(lgItems).indexOf(entry.target);
+        console.log(`[ThumbLazy:${albumId}] INTERSECTION #${index}:`, img.dataset.lazySrc.split('/').pop().split('?')[0]);
         enqueue(img);
       }
+      observer.unobserve(entry.target);
     });
+  }, {
+    root: thumbContainer,
+    rootMargin: '0px 300px',
+    threshold: 0,
+  });
 
-    // Observer pour les thumbnails hors viewport.
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        const img = entry.target.querySelector('img[data-lazy-src]');
-        if (img) {
-          const index = Array.from(items).indexOf(entry.target);
-          console.log(`[ThumbLazy:${albumId}] INTERSECTION #${index}:`, img.dataset.lazySrc.split('/').pop().split('?')[0]);
-          enqueue(img);
-        }
-        observer.unobserve(entry.target);
-      });
-    }, {
-      root: thumbContainer,
-      rootMargin: '0px 300px',
-      threshold: 0,
-    });
-
-    items.forEach((item, index) => {
-      if (index >= VISIBLE_COUNT) {
-        observer.observe(item);
-      }
-    });
+  lgItems.forEach((item, index) => {
+    if (deferredThumbs.has(index)) {
+      observer.observe(item);
+    }
+  });
   }
 
 })(jQuery, Drupal, drupalSettings, window.once);
