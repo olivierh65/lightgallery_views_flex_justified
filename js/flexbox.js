@@ -41,7 +41,7 @@
             const PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
             const VISIBLE_COUNT = 6;
             const MAX_CONCURRENT = 3;
-            const REQUEST_DELAY = 300; // ms entre chaque requête
+            const REQUEST_DELAY = 0; // ms entre chaque requête
 
             // File d'attente partagée (thumbnails + slides principaux).
             let activeRequests = 0;
