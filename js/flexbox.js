@@ -59,9 +59,27 @@ items.forEach((item, index) => {
               selector: "a",
               plugins: plugins,
               subHtmlSelectorRelative: true,
-              preload: 1,
+              preload: 0,
             });
 
+            // Après l'initialisation de lightgallery
+$album[0].addEventListener('lgLoadError', (e) => {
+  const index = e.detail?.index;
+  console.log(`[LG] Load error on slide ${index} — scheduling retry`);
+
+  setTimeout(() => {
+    const instance = $album.data('lightGallery');
+    if (instance) {
+      console.log(`[LG] Retrying slide ${index}`);
+      // Forcer le rechargement du slide courant.
+      const lgItem = document.querySelector(`#lg-item-${instance.lgId}-${index}`);
+      if (lgItem) {
+        lgItem.classList.remove('lg-complete', 'lg-loaded', 'lg-complete_');
+        instance.loadContent(index, true);
+      }
+    }
+  }, 3000);
+});
             // Après ouverture, restaurer les vrais data-thumb et lancer le lazy loading.
 $album[0].addEventListener('lgAfterOpen', () => {
   // Restaurer les data-thumb originaux dans le HTML source.
