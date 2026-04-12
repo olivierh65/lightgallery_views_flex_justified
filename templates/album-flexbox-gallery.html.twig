@@ -47,7 +47,7 @@
 							{% if album.image_url %}
                                 {# On gère le séparateur dynamiquement pour la couverture #}
                                 {% set cover_sep = (album.image_url|split('?')|length > 1) ? '&' : '?' %}
-                                <img src="{{ album.image_url }}{{ cover_sep }}{{ security_query }}&m_id={{ album.image_url_id }}" class="album-img" loading="lazy" alt="{{ album.title }}">
+                                <img loading="{{ album.loading|default('lazy') }}" src="{{ album.image_url }}{{ cover_sep }}{{ security_query }}&m_id={{ album.image_url_id }}" class="album-img" alt="{{ album.title }}">
                             {% endif %}
 							</a>
 
@@ -60,7 +60,7 @@
 
 									{% if media.mime_type starts with 'image/' %}
 										<a href="{{ media.url }}{{ url_sep }}{{ security_query }}&m_id={{ media.media_id }}" class="lightgallery__item" data-sub-html=".lightgallery_caption">
-                                        <img loading="lazy" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}">
+                                        <img loading="{{ media.loading|default('lazy') }}" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}">
 											<div class="lightgallery_caption">
 												<h4>{{ media.title|default('') }}</h4>
 												{% if media.alt %}
@@ -76,7 +76,7 @@
 										data-poster="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}"
 										data-video='{"source": [{"src":"{{ media.url }}{{ url_sep }}{{ security_query }}&m_id={{ media.media_id }}","type":"{{ media.mime_type }}"}], "attributes": {"preload": false, "playsinline": true, "controls": true}}' title="{{ media.title|default('') }}">
 											{% if media.thumbnail %}
-												<img loading="lazy" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}"/>
+												<img loading="{{ media.loading|default('lazy') }}" src="{{ media.thumbnail }}{{ thumb_sep }}{{ security_query }}&m_id={{ media.media_id }}"/>
 											{% endif %}
 											<div class="lightgallery_caption">
 												<h4>{{ media.title|default('') }}</h4>

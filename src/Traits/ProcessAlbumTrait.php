@@ -341,6 +341,7 @@ trait ProcessAlbumTrait {
             'title' => $media->get($source_field)->first()->get('title')->getValue() ?? '',
             'thumbnail' => $thumbnail_url,
             'media_id' => $media->id(),
+            'loading' => 'lazy',
           ];
         }
         break;
@@ -373,6 +374,8 @@ trait ProcessAlbumTrait {
             'thumbnail' => $thumbnail_url,
             'title' => $media->get($source_field)->first()->get('description')->getValue() ?? '',
             'media_id' => $media->id(),
+            'loading' => 'lazy',
+            'preload' => 'none',
           ];
         }
         break;

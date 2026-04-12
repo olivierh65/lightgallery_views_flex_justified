@@ -1,5 +1,4 @@
 (function ($, Drupal, drupalSettings, once) {
-
   /**
    * Album Gallery Behavior - Flexbox Layout with LightGallery
    *
@@ -12,16 +11,15 @@
 
       // update .flexbox-item.album-item heights based on image sizes
       const albumSettings = drupalSettings.settings.lightgallery || {};
-      const itemSelector = '.flexbox-item.album-item';
-      $(once('lg-flexbox-adjust', itemSelector, context)).each(function () {
+      const itemSelector = ".flexbox-item.album-item";
+      $(once("lg-flexbox-adjust", itemSelector, context)).each(function () {
         const $item = $(this);
-        $item.attr('width', albumSettings.thumbnail_width || '200');
-        $item.attr('height', albumSettings.thumbnail_height || '200');
+        $item.attr("width", albumSettings.thumbnail_width || "200");
+        $item.attr("height", albumSettings.thumbnail_height || "200");
       });
 
       // Initialize LightGallery on album covers
       $(once("lg-album-init", ".album-cover", context)).each(function () {
-
         $(this).on("click", function (e) {
           e.preventDefault();
 
@@ -38,7 +36,9 @@
             return;
           }
 
-          const albumSettings = drupalSettings.settings.lightgallery?.albums_settings[albumId] || {};
+          const albumSettings =
+            drupalSettings.settings.lightgallery?.albums_settings[albumId] ||
+            {};
 
           // Initialize LightGallery if not already done
           if (!$album.data("lightGallery")) {
@@ -52,6 +52,14 @@
               selector: "a",
               plugins: plugins,
               subHtmlSelectorRelative: true,
+
+              // Lazy loading
+              lazyLoadEager: 1, // Précharger seulement 1 slide adjacent (au lieu de preload:2)
+              preload: 1, // Remplace le preload:2 des albumSettings
+
+              // Thumbnails lazy loading
+              loadYouTubeThumbnail: false,
+              thumbLoadEager: 2, // Charger seulement 2 miniatures visibles au départ
             });
 
             $album.data("lightGallery", instance);
@@ -65,6 +73,4 @@
       console.log("✓ Album gallery initialized (Flexbox + LightGallery)");
     },
   };
-
 })(jQuery, Drupal, drupalSettings, window.once);
-
