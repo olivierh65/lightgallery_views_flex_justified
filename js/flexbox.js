@@ -52,14 +52,28 @@
               selector: "a",
               plugins: plugins,
               subHtmlSelectorRelative: true,
+            });
 
-              // Lazy loading
-              lazyLoadEager: 1, // Précharger seulement 1 slide adjacent (au lieu de preload:2)
-              preload: 1, // Remplace le preload:2 des albumSettings
+            // Injecter loading="lazy" sur toutes les miniatures après ouverture.
+            $album[0].addEventListener("lgAfterOpen", () => {
+              // Lazy load sur les thumbnails du carrousel.
+              document
+                .querySelectorAll(".lg-thumb-item img")
+                .forEach((img, index) => {
+                  if (index > 2) {
+                    // Garder les 3 premières visibles, lazy pour le reste.
+                    img.setAttribute("loading", "lazy");
+                  }
+                });
+            });
 
-              // Thumbnails lazy loading
-              loadYouTubeThumbnail: false,
-              thumbLoadEager: 2, // Charger seulement 2 miniatures visibles au départ
+            // Lazy load sur les nouvelles miniatures ajoutées dynamiquement.
+            $album[0].addEventListener("lgAfterAppendSubHtml", () => {
+              document
+                .querySelectorAll(".lg-thumb-item img:not([loading])")
+                .forEach((img) => {
+                  img.setAttribute("loading", "lazy");
+                });
             });
 
             $album.data("lightGallery", instance);
