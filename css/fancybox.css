@@ -1,0 +1,377 @@
+
+:root {
+  --primary-color: #4a5568;
+  --secondary-color: #718096;
+  --accent-color: #2d3748;
+  --light-gray: #f7fafc;
+  --medium-gray: #e2e8f0;
+  --dark-gray: #a0aec0;
+  --border-subtle: #cbd5e0;
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+  --card-shadow-hover: 0 4px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* === Main containers === */
+
+.flexbox-root {
+  width: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
+  border: 1px solid var(--medium-gray);
+  background: var(--light-gray);
+  border-radius: 4px;
+}
+
+.flexbox-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: fit-content;
+  box-sizing: border-box;
+  margin-left: 0.8rem;
+  margin-right: 0.8rem;
+  border: 1px solid var(--medium-gray);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+/* === ALBUMS CONTAINER === */
+
+.albums-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: fit-content;
+  box-sizing: border-box;
+}
+
+/* === GROUPS === */
+
+.group-item {
+  width: auto;
+  box-sizing: border-box;
+  padding-bottom: 0.9rem;
+  position: relative;
+}
+
+.group-item.level-0 {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border-subtle);
+  padding: 0.5rem;
+  padding-bottom: 0.9rem;
+  border-radius: 4px;
+  background: #ffffff;
+  position: relative;
+}
+
+.group-item.level-0::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 1px 0 0 1px;
+}
+
+.group-item.level-1 {
+  grid-column: 1 / -1;
+}
+
+.group-item.level-1::before {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--secondary-color);
+  opacity: 0.4;
+}
+
+.group-item.level-2 {
+  grid-column: 1 / -1;
+  padding-left: 0.75rem;
+  margin-left: 2rem;
+  position: relative;
+}
+
+/* Group titles */
+.group-title-wrapper {
+  width: fit-content;
+  position: relative;
+}
+
+.group-title {
+  font-weight: 600;
+  padding-left: 1rem;
+  color: var(--primary-color);
+  position: relative;
+}
+
+.group-title.level-0 {
+  font-size: 1.2rem;
+  color: var(--accent-color);
+  padding-left: 0.5rem;
+  display: inline-block;
+  font-weight: 700;
+}
+
+.group-title.level-1 {
+  font-size: 1.1rem;
+  color: var(--primary-color);
+  border-bottom: 1px solid var(--medium-gray);
+  padding-bottom: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.group-title.level-2 {
+  font-size: 0.9rem;
+  color: var(--secondary-color);
+  font-weight: 500;
+}
+
+/* === ALBUMS (Cards Covers) === */
+
+.flexbox-item.album-item {
+  position: relative;
+  /* width: 220px;
+  height: 220px; */
+  flex-shrink: 0;
+  background: white;
+  border: 1px solid var(--medium-gray);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-sizing: border-box;
+  box-shadow: var(--card-shadow);
+}
+
+.flexbox-item.album-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color);
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.flexbox-item.album-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-hover);
+  border-color: var(--dark-gray);
+}
+
+.flexbox-item.album-item:hover::before {
+  opacity: 1;
+}
+
+.flexbox-item.album-item:hover .album-caption {
+  opacity: 1;
+}
+
+.album-cover {
+  display: block;
+  position: relative;
+  text-decoration: none;
+  color: inherit;
+  line-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.album-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: rgba(45, 55, 72, 0.9);
+  color: white;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 1;
+  text-align: center;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.album-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.flexbox-item.album-item:hover .album-img {
+  transform: scale(1.03);
+}
+
+.album-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.3));
+  color: white;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 2;
+  max-height: 40%;
+  overflow: hidden;
+}
+
+.album-description {
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0.5rem 0 0 0;
+}
+
+.album-author {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+
+/* Subtle highlight effect */
+.album-cover::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.flexbox-item.album-item:hover .album-cover::after {
+  left: 100%;
+}
+
+/* === LIGHTGALLERY === */
+
+.fancybox-album {
+  display: none !important;
+}
+
+/* === RESPONSIVE === */
+
+/* tablet */
+@media (max-width: 1024px) {
+  .albums-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+/*  small tablet */
+@media (max-width: 768px) {
+  .albums-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .group-item.level-1 {
+    margin-left: 0.5rem;
+  }
+
+  .group-item.level-2 {
+    margin-left: 1rem;
+  }
+
+  .group-item.level-0::before {
+    width: 2px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .albums-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .group-item.level-0 {
+    padding: 0.75rem;
+  }
+
+  .group-item.level-1 {
+    margin-left: 0;
+    padding-left: 0.5rem;
+  }
+
+  .group-item.level-2 {
+    margin-left: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .group-title.level-0 {
+    font-size: 1.2rem;
+  }
+
+  .group-title.level-1 {
+    font-size: 1rem;
+  }
+
+  .flexbox-item.album-item {
+    border-width: 1px;
+  }
+}
+
+/* very small mobile */
+@media (max-width: 360px) {
+  .albums-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.5rem;
+  }
+}
+
+/* === subtle animations === */
+
+@keyframes subtleAppear {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.flexbox-item.album-item {
+  animation: subtleAppear 0.3s ease forwards;
+  animation-delay: calc(var(--item-index, 0) * 0.03s);
+  opacity: 0;
+}
+
+/* === UTILITIES === */
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: var(--secondary-color);
+  font-style: italic;
+  font-size: 0.9rem;
+  background: var(--light-gray);
+  border-radius: 4px;
+  border: 1px solid var(--medium-gray);
+}
