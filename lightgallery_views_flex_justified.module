@@ -57,6 +57,16 @@ function lightgallery_views_flex_justified_theme(array $existing, string $type, 
       ],
       'template' => 'album-fancybox-gallery',
     ],
+    'album_fancybox_grid' => [
+      'variables' => [
+        'attributes' => [],
+        'view' => NULL,
+        'options' => [],
+        'groups' => [],
+        'init' => TRUE
+      ],
+      'template' => 'album-fancybox-grid',
+    ],
   ];
 }
 

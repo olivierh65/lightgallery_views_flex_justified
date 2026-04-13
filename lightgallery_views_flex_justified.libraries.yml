@@ -40,3 +40,16 @@ fancybox:
   dependencies:
     - core/drupal
     - core/drupalSettings
+
+fancybox_grid:
+  version: 1.x
+  css:
+    theme:
+      https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.css: { type: external }
+      css/fancybox_grid.css: {}
+  js:
+    https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.umd.js: { type: external }
+    js/fancybox_grid.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
