@@ -30,7 +30,7 @@
   box-sizing: border-box;
   margin-left: 0.8rem;
   margin-right: 0.8rem;
-  border: 1px solid var(--medium-gray);
+  border: 1px solid var(--dark-gray);
   border-radius: 4px;
   background: #ffffff;
 }
@@ -56,7 +56,7 @@
 
 .group-item.level-0 {
   grid-column: 1 / -1;
-  border: 1px solid var(--border-subtle);
+  border: 3px solid var(--border-subtle);
   padding: 0.5rem;
   padding-bottom: 0.9rem;
   border-radius: 4px;
