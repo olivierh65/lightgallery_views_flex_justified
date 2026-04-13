@@ -75,39 +75,46 @@
 })(jQuery, Drupal, drupalSettings, window.once);
 
 (function ($, Drupal, once) {
-  Drupal.behaviors.masonryFix = {
+  Drupal.behaviors.masonryFinal = {
     attach: function (context) {
+      const grid = document.querySelector(".flexbox-container");
+      if (!grid) return;
 
-      function resizeMasonryItem(item) {
-        const grid = item.closest(".flexbox-container");
-        if (!grid) return;
-
+      function resizeItem(item) {
+        // On récupère les valeurs de la grille (10px et 0/gap)
         const rowHeight = parseInt(window.getComputedStyle(grid).getPropertyValue("grid-auto-rows"));
         const rowGap = parseInt(window.getComputedStyle(grid).getPropertyValue("grid-row-gap"));
 
-        // Calcul précis de la hauteur
-        const contentHeight = item.getBoundingClientRect().height;
+        // On mesure la hauteur réelle de la couverture
+        const cover = item.querySelector('.album-cover');
+        if (!cover) return;
+
+        const contentHeight = cover.getBoundingClientRect().height;
+
+        // Calcul du nombre de rangées de 10px
         const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
 
+        // Application directe sur le style de l'élément
         item.style.gridRowEnd = "span " + rowSpan;
       }
 
-      const items = once('masonry-init', '.album-item', context);
+      // On cible les albums une seule fois
+      $(once('masonry-layout', '.album-item', context)).each(function() {
+        const $item = $(this)[0];
+        const $img = $(this).find('img')[0];
 
-      items.forEach(item => {
-        // Calcul immédiat
-        resizeMasonryItem(item);
-
-        // Calcul après chargement de l'image interne
-        const img = item.querySelector('img');
-        if (img) {
-          img.addEventListener('load', () => resizeMasonryItem(item));
+        if ($img) {
+          if ($img.complete) {
+            resizeItem($item);
+          } else {
+            $img.addEventListener('load', () => resizeItem($item));
+          }
         }
       });
 
-      // Recalcul au redimensionnement
+      // Recalcul global au redimensionnement de la fenêtre
       window.addEventListener("resize", () => {
-        document.querySelectorAll('.album-item').forEach(resizeMasonryItem);
+        document.querySelectorAll('.album-item').forEach(resizeItem);
       });
     }
   };

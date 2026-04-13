@@ -192,6 +192,15 @@
   letter-spacing: 0.2px;
 }
 
+/* --- À METTRE EN DEHORS DE TOUTE MEDIA QUERY --- */
+.flexbox-item.album-item {
+    grid-row-end: span 20; /* Base pour le JS */
+    margin-bottom: 20px;
+    height: fit-content; /* CRUCIAL : permet à la div de coller à l'image */
+    display: block;
+    position: relative;
+}
+
 .flexbox-item.album-item:hover .album-img {
   transform: scale(1.03);
 }
@@ -312,12 +321,6 @@
     font-size: 1rem;
   }
 
-/* On stylise l'album pour qu'il soit l'unité de base du Masonry */
-.flexbox-item.album-item {
-    grid-row-end: span 20; /* Valeur temporaire avant le JS */
-    margin-bottom: 20px;   /* C'est cet espace qui créera le gap vertical */
-    height: fit-content;
-}
 }
 
 /* very small mobile */
