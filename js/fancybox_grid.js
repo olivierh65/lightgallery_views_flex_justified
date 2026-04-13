@@ -73,10 +73,10 @@
        * Calcule le nombre de 'spans' (lignes de 10px) nécessaires pour chaque album
        */
       function resizeMasonryItem(item) {
-        const grid = document.querySelector(".flexbox-container");
+        // On cherche le container .flexbox-container le plus proche de l'item
+        const grid = item.closest(".flexbox-container");
         if (!grid) return;
 
-        // On récupère la hauteur de la ligne (10px) et l'écart
         const rowHeight = parseInt(
           window.getComputedStyle(grid).getPropertyValue("grid-auto-rows"),
         );
@@ -84,8 +84,7 @@
           window.getComputedStyle(grid).getPropertyValue("grid-row-gap"),
         );
 
-        // On calcule le span basé sur la hauteur réelle du contenu de la carte
-        // Le +10 à la fin sert de petit padding de sécurité
+        // On calcule sur la base du contenu réel
         const rowSpan = Math.ceil(
           (item.getBoundingClientRect().height + rowGap) / (rowHeight + rowGap),
         );

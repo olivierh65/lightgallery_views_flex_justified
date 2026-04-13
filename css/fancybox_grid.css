@@ -22,22 +22,16 @@
   border-radius: 4px;
 }
 
+/* Force chaque container de groupe à être lui-même une grille Masonry */
 .flexbox-container {
-  display: grid;
-  /* Colonnes responsives */
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  /* Lignes de 10px : c'est notre unité de mesure */
-  grid-auto-rows: 10px;
-  gap: 0 1rem; /* 0 d'écart vertical (géré par le JS), 1rem horizontal */
-  align-items: start;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-auto-rows: 10px;
+    gap: 0 1rem;
+    align-items: start;
+    width: 100%; /* Ne pas utiliser fit-content ici */
 }
 
-.flexbox-item.album-item {
-  /* On s'assure que l'item ne crée pas de scroll interne */
-  grid-row-end: span 20; /* Valeur par défaut avant calcul JS */
-  margin-bottom: 10px;
-  display: block;
-}
 
 .album-img {
   width: 100%;
@@ -58,11 +52,10 @@
 
 /* === GROUPS === */
 
+/* Permet aux groupes de s'étendre sur toute la largeur de la grille masonry */
 .group-item {
-  width: auto;
-  box-sizing: border-box;
-  padding-bottom: 0.9rem;
-  position: relative;
+    grid-column: 1 / -1; /* Indispensable : le groupe prend toute la largeur */
+    display: contents;   /* Optionnel : fait comme si la div n'existait pas pour le layout */
 }
 
 .group-item.level-0 {
@@ -178,9 +171,8 @@
   position: relative;
   text-decoration: none;
   color: inherit;
-  line-height: 0;
+  line-height: normal;
   width: 100%;
-  height: 100%;
   overflow: hidden;
 }
 
@@ -322,6 +314,7 @@
 
   .flexbox-item.album-item {
     border-width: 1px;
+    height: max-content; /* Force l'item à coller à son contenu */
   }
 }
 
