@@ -20,7 +20,7 @@ class AlbumFancyboxGrid extends AlbumFancyboxGallery {
    */
   public function render() {
     $build = parent::render();
-    $build['#attached']['library'][] = 'lightgallery_views_flex_justified/album_fancybox_grid';
+    $build['#attached']['library'][] = 'lightgallery_views_flex_justified/fancybox_grid';
     return $build;
   }
 
