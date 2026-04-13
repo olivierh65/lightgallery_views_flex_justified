@@ -27,3 +27,16 @@ flexbox:
   css:
     theme:
       css/flexbox.css: { minified: false }
+
+fancybox:
+  version: 1.x
+  css:
+    theme:
+      https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.css: { type: external }
+      css/fancybox.css: {}
+  js:
+    https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.umd.js: { type: external }
+    js/fancybox.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
