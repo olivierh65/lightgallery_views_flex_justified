@@ -69,53 +69,46 @@
         });
       });
 
-      /**
-       * Calcule le nombre de 'spans' (lignes de 10px) nécessaires pour chaque album
-       */
-      function resizeMasonryItem(item) {
-        // On cherche le container .flexbox-container le plus proche de l'item
-        const grid = item.closest(".flexbox-container");
-        if (!grid) return;
-
-        const rowHeight = parseInt(
-          window.getComputedStyle(grid).getPropertyValue("grid-auto-rows"),
-        );
-        const rowGap = parseInt(
-          window.getComputedStyle(grid).getPropertyValue("grid-row-gap"),
-        );
-
-        // On calcule sur la base du contenu réel
-        const rowSpan = Math.ceil(
-          (item.getBoundingClientRect().height + rowGap) / (rowHeight + rowGap),
-        );
-
-        item.style.gridRowEnd = "span " + rowSpan;
-      }
-
-      function resizeAllMasonryItems() {
-        const allItems = document.querySelectorAll(".album-item");
-        allItems.forEach(resizeMasonryItem);
-      }
-
-      // 1. On lance au chargement
-      window.addEventListener("load", resizeAllMasonryItems);
-
-      // 2. On relance si on redimensionne la fenêtre (responsive)
-      window.addEventListener("resize", resizeAllMasonryItems);
-
-      // 3. CRUCIAL : On relance quand les images sont vraiment chargées
-      // (car une image non chargée a une hauteur de 0)
-      document.querySelectorAll(".album-img").forEach((img) => {
-        if (img.complete) {
-          resizeMasonryItem(img.closest(".album-item"));
-        } else {
-          img.addEventListener("load", () => {
-            resizeMasonryItem(img.closest(".album-item"));
-          });
-        }
-      });
-
       console.log("✓ Album gallery initialized (Fancybox)");
     },
   };
 })(jQuery, Drupal, drupalSettings, window.once);
+
+(function ($, Drupal, once) {
+  Drupal.behaviors.masonryFix = {
+    attach: function (context) {
+
+      function resizeMasonryItem(item) {
+        const grid = item.closest(".flexbox-container");
+        if (!grid) return;
+
+        const rowHeight = parseInt(window.getComputedStyle(grid).getPropertyValue("grid-auto-rows"));
+        const rowGap = parseInt(window.getComputedStyle(grid).getPropertyValue("grid-row-gap"));
+
+        // Calcul précis de la hauteur
+        const contentHeight = item.getBoundingClientRect().height;
+        const rowSpan = Math.ceil((contentHeight + rowGap) / (rowHeight + rowGap));
+
+        item.style.gridRowEnd = "span " + rowSpan;
+      }
+
+      const items = once('masonry-init', '.album-item', context);
+
+      items.forEach(item => {
+        // Calcul immédiat
+        resizeMasonryItem(item);
+
+        // Calcul après chargement de l'image interne
+        const img = item.querySelector('img');
+        if (img) {
+          img.addEventListener('load', () => resizeMasonryItem(item));
+        }
+      });
+
+      // Recalcul au redimensionnement
+      window.addEventListener("resize", () => {
+        document.querySelectorAll('.album-item').forEach(resizeMasonryItem);
+      });
+    }
+  };
+})(jQuery, Drupal, window.once);

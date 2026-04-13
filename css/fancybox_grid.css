@@ -22,14 +22,13 @@
   border-radius: 4px;
 }
 
-/* Force chaque container de groupe à être lui-même une grille Masonry */
+/* On s'assure que le container racine est bien la grille */
 .flexbox-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     grid-auto-rows: 10px;
-    gap: 0 1rem;
+    gap: 0 15px; /* Pas d'écart vertical ici, le JS gère avec le margin-bottom */
     align-items: start;
-    width: 100%; /* Ne pas utiliser fit-content ici */
 }
 
 
@@ -101,10 +100,11 @@
   position: relative;
 }
 
-/* Group titles */
+/* Si tu veux garder les titres de groupes au milieu du Masonry */
 .group-title-wrapper {
-  width: fit-content;
-  position: relative;
+    grid-column: 1 / -1; /* Le titre prend toute la largeur */
+    grid-row-end: span 4; /* On lui donne aussi un span pour qu'il ne se chevauche pas */
+    margin: 10px 0;
 }
 
 .group-title {
@@ -312,10 +312,12 @@
     font-size: 1rem;
   }
 
-  .flexbox-item.album-item {
-    border-width: 1px;
-    height: max-content; /* Force l'item à coller à son contenu */
-  }
+/* On stylise l'album pour qu'il soit l'unité de base du Masonry */
+.flexbox-item.album-item {
+    grid-row-end: span 20; /* Valeur temporaire avant le JS */
+    margin-bottom: 20px;   /* C'est cet espace qui créera le gap vertical */
+    height: fit-content;
+}
 }
 
 /* very small mobile */
