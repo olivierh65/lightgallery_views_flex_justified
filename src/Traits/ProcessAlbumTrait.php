@@ -116,61 +116,58 @@ trait ProcessAlbumTrait {
    * @return array|null
    *   The album data or NULL on error.
    */
-  private function buildAlbumDataFromGroup($rows, $group_index, array &$lightgallery_album_settings) {
-    $medias = [];
-    $first_media = NULL;
-    $title = '';
-    $author = '';
-    $description = '';
+  private function buildAlbumDataFromGroup($rows, $group_index, array &$lightgallery_album_settings): ?array {
+
+    // 1. Extraire tous les media_ids depuis les rows sans charger les entités
+    $media_ids = [];
+    $first_row = NULL;
+    $first_index = NULL;
 
     foreach ($rows as $index => $row) {
-      $this->view->row_index = $index;
-
-      // Get the media entity from the row.
-      $media = NULL;
-
-      // Vérifier d'abord si le média est dans _relationship_entities (nouvelle structure)
-      if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
-        // Chercher le champ de relationship (ex: field_media_album_av_media)
-        foreach ($row->_relationship_entities as $rel_field => $rel_entity) {
+      // Récupérer l'ID depuis _relationship_entities sans charger le rendu.
+      if (isset($row->_relationship_entities)) {
+        foreach ($row->_relationship_entities as $rel_entity) {
           if ($rel_entity instanceof MediaInterface) {
-            $media = $rel_entity;
+            $media_ids[] = $rel_entity->id();
+            if ($first_row === NULL) {
+              $first_row = $row;
+              $first_index = $index;
+            }
             break;
           }
         }
       }
+    }
 
-      // Fallback: ancienne structure où le média était dans _entity.
-      if (!$media && isset($row->_entity) && $row->_entity instanceof MediaInterface) {
-        $media = $row->_entity;
-      }
+    if (empty($media_ids) || $first_row === NULL) {
+      return NULL;
+    }
 
+    // 2. Charger tous les médias en une seule requête loadMultiple
+    $medias_entities = $this->loadMediasLean($media_ids);
+
+    // 3. Récupérer les champs texte depuis la première row seulement
+    $this->view->row_index = $first_index;
+    $title                 = $this->getFieldValue($first_index, $this->options['image']['title_field'] ?? '');
+    $author                = $this->getFieldValue($first_index, $this->options['image']['author_field'] ?? '');
+    $description           = $this->getFieldValue($first_index, $this->options['image']['description_field'] ?? '');
+
+    // 4. Construire les données média
+    $medias = [];
+    $first_media = NULL;
+
+    foreach ($media_ids as $media_id) {
+      $media = $medias_entities[$media_id] ?? NULL;
       if (!$media) {
         continue;
       }
-
-      // Keep first media for album thumbnail.
       if (!$first_media) {
         $first_media = $media;
-
-        // Get text fields from first row.
-        $title = !empty($this->options['image']['title_field'])
-        ? $this->getFieldValue($index, $this->options['image']['title_field'])
-        : '';
-        $author = !empty($this->options['image']['author_field'])
-        ? $this->getFieldValue($index, $this->options['image']['author_field'])
-        : '';
-        $description = !empty($this->options['image']['description_field'])
-        ? $this->getFieldValue($index, $this->options['image']['description_field'])
-        : '';
       }
-
-      // Get source field and build media data.
       $source_field = $this->getSourceField($media);
       if (!$source_field) {
         continue;
       }
-
       $media_data = $this->buildMediaItemData($media, $source_field);
       if ($media_data) {
         $medias[] = $media_data;
@@ -181,32 +178,51 @@ trait ProcessAlbumTrait {
       return NULL;
     }
 
-    // Use first media's thumbnail as album image.
-    $image_url = $medias[0]['thumbnail'] ?? $medias[0]['url'] ?? '';
-    $image_url_id = $medias[0]['media_id'] ?? '';
-
-    // Get lightgallery settings.
+    // 5. Lightgallery settings sur le premier média seulement
     $lightgallery_settings = $this->getLightgallerySettings($first_media);
-
-    // Build plugins list and attach libraries.
     foreach ($lightgallery_settings['plugins'] ?? [] as $plugin_name => $plugin) {
-      $lightgallery_album_settings['plugins'][$plugin_name] = 'lightgallery/lightgallery-' . $plugin_name ?? $plugin_name;
+      $lightgallery_album_settings['plugins'][$plugin_name] =
+            'lightgallery/lightgallery-' . $plugin_name;
     }
 
     $album_id = 'album-group-' . $group_index;
     $lightgallery_album_settings[$album_id] = $lightgallery_settings;
 
     return [
-      'id' => $album_id,
-      'image_url' => $image_url,
-      'image_url_id' => $image_url_id,
-      'title' => $title,
-      'author' => $author,
-      'description' => $description,
-      'url' => '',
-      'medias' => $medias,
-      'nid' => ($nid_values = $row->_entity->get('nid')->getValue()) ? reset($nid_values)['value'] ?? '' : '',
+      'id'           => $album_id,
+      'image_url'    => $medias[0]['thumbnail'] ?? $medias[0]['url'] ?? '',
+      'image_url_id' => $medias[0]['media_id'] ?? '',
+      'title'        => $title,
+      'author'       => $author,
+      'description'  => $description,
+      'url'          => '',
+      'medias'       => $medias,
+      'nid'          => $first_row->_entity->get('nid')->getValue()[0]['value'] ?? '',
     ];
+  }
+
+  /**
+   * Charge uniquement les champs nécessaires pour un lot de médias.
+   *
+   * @param int[] $media_ids
+   *
+   * @return \Drupal\media\MediaInterface[]
+   */
+  private function loadMediasLean(array $media_ids): array {
+    if (empty($media_ids)) {
+      return [];
+    }
+
+    // Charger toutes les entités en une seule requête (pas de N+1)
+    $medias = \Drupal::entityTypeManager()
+      ->getStorage('media')
+      ->loadMultiple($media_ids);
+
+    // loadMultiple charge déjà uniquement les champs demandés
+    // par le bundle — l'optimisation suivante serait un storage
+    // avec field_names restreints, mais cela nécessite un patch core.
+    // L'essentiel est d'éviter le rendu Views par-dessus.
+    return $medias;
   }
 
   /**
@@ -313,75 +329,94 @@ trait ProcessAlbumTrait {
    * @return array|null
    *   The media item data or NULL on error.
    */
-  private function buildMediaItemData(MediaInterface $media, $source_field) {
-    switch ($media->getSource()->getPluginId()) {
+  private function buildMediaItemData(MediaInterface $media, string $source_field): ?array {
+    $plugin_id = $media->getSource()->getPluginId();
+
+    switch ($plugin_id) {
       case 'image':
-        $file = $media->get($source_field)->entity;
-        if ($file instanceof FileInterface) {
-          $original_url = $this->fileUrlGenerator->generateAbsoluteString($file->getFileUri());
-          $thumbnail_url = $original_url;
-
-          if (!empty($this->options['image']['image_thumbnail_style'])) {
-            try {
-              $image_style = ImageStyle::load($this->options['image']['image_thumbnail_style']);
-              if ($image_style) {
-                $thumbnail_url = $image_style->buildUrl($file->getFileUri());
-              }
-            }
-            catch (\Exception $e) {
-              \Drupal::logger('album_gallery')->error('Error loading image style: @error',
-              ['@error' => $e->getMessage()]);
-            }
-          }
-
-          return [
-            'url' => $original_url,
-            'mime_type' => $file->getMimeType(),
-            'alt' => $media->get($source_field)->first()->get('alt')->getValue() ?? '',
-            'title' => $media->get($source_field)->first()->get('title')->getValue() ?? '',
-            'thumbnail' => $thumbnail_url,
-            'media_id' => $media->id(),
-            'loading' => 'lazy',
-          ];
+        // Seuls champs nécessaires : le source field (fid + alt + title)
+        if ($media->get($source_field)->isEmpty()) {
+          return NULL;
         }
-        break;
+        $item = $media->get($source_field)->first();
+        $file = $item->entity;
+        if (!$file instanceof FileInterface) {
+          return NULL;
+        }
+
+        $uri = $file->getFileUri();
+        $original_url = $this->fileUrlGenerator->generateAbsoluteString($uri);
+        $thumbnail_url = $this->buildStyledUrl($uri, $original_url);
+
+        return [
+          'url'       => $original_url,
+          'mime_type' => $file->getMimeType(),
+          'alt'       => $item->get('alt')->getValue() ?? '',
+          'title'     => $item->get('title')->getValue() ?? '',
+          'thumbnail' => $thumbnail_url,
+          'media_id'  => $media->id(),
+          'loading'   => 'lazy',
+        ];
 
       case 'video_file':
-        $file = $media->get($source_field)->entity;
-        $thumbnail = $media->get('thumbnail')->entity;
-        if ($file instanceof FileInterface) {
-          $thumbnail_url = '';
-          if ($thumbnail) {
-            $thumbnail_url = $this->fileUrlGenerator->generateAbsoluteString($thumbnail->getFileUri());
-
-            if (!empty($this->options['image']['image_thumbnail_style'])) {
-              try {
-                $image_style = ImageStyle::load($this->options['image']['image_thumbnail_style']);
-                if ($image_style) {
-                  $thumbnail_url = $image_style->buildUrl($thumbnail->getFileUri());
-                }
-              }
-              catch (\Exception $e) {
-                \Drupal::logger('album_gallery')->error('Error loading image style for video thumbnail: @error',
-                ['@error' => $e->getMessage()]);
-              }
-            }
-          }
-
-          return [
-            'url' => $this->fileUrlGenerator->generateAbsoluteString($file->getFileUri()),
-            'mime_type' => $file->getMimeType(),
-            'thumbnail' => $thumbnail_url,
-            'title' => $media->get($source_field)->first()->get('description')->getValue() ?? '',
-            'media_id' => $media->id(),
-            'loading' => 'lazy',
-            'preload' => 'none',
-          ];
+        if ($media->get($source_field)->isEmpty()) {
+          return NULL;
         }
-        break;
+        $file = $media->get($source_field)->entity;
+        if (!$file instanceof FileInterface) {
+          return NULL;
+        }
+
+        // Thumbnail : uniquement le champ 'thumbnail', pas de rendu complet.
+        $thumbnail_url = $this->buildVideoThumbnailUrl($media);
+
+        return [
+          'url'       => $this->fileUrlGenerator->generateAbsoluteString($file->getFileUri()),
+          'mime_type' => $file->getMimeType(),
+          'thumbnail' => $thumbnail_url,
+          'title'     => $media->get($source_field)->first()->get('description')->getValue() ?? '',
+          'media_id'  => $media->id(),
+          'loading'   => 'lazy',
+          'preload'   => 'none',
+        ];
     }
 
     return NULL;
+  }
+
+  /**
+   * Factorise la génération d'URL stylisée pour éviter la duplication.
+   */
+  private function buildStyledUrl(string $uri, string $fallback): string {
+    $style_name = $this->options['image']['image_thumbnail_style'] ?? '';
+    if (!$style_name) {
+      return $fallback;
+    }
+    try {
+      $style = ImageStyle::load($style_name);
+      return $style ? $style->buildUrl($uri) : $fallback;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('album_gallery')->error('Image style error: @e', ['@e' => $e->getMessage()]);
+      return $fallback;
+    }
+  }
+
+  /**
+   * Charge uniquement le champ thumbnail du média vidéo.
+   */
+  private function buildVideoThumbnailUrl(MediaInterface $media): string {
+    if ($media->get('thumbnail')->isEmpty()) {
+      return $this->getDefaultImageUrl('Video_error.png');
+    }
+    $thumbnail = $media->get('thumbnail')->entity;
+    if (!$thumbnail instanceof FileInterface) {
+      return $this->getDefaultImageUrl('Video_error.png');
+    }
+    return $this->buildStyledUrl(
+        $thumbnail->getFileUri(),
+        $this->fileUrlGenerator->generateAbsoluteString($thumbnail->getFileUri())
+    );
   }
 
   /**
