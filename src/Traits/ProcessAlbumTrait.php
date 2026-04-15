@@ -118,17 +118,22 @@ trait ProcessAlbumTrait {
    */
   private function buildAlbumDataFromGroup($rows, $group_index, array &$lightgallery_album_settings): ?array {
 
-    // 1. Extraire tous les media_ids depuis les rows sans charger les entités
-    $media_ids = [];
+    // 1. Récupérer directement les entités média déjà présentes dans les rows.
+    $media_entities = [];
+    $seen_media_ids = [];
     $first_row = NULL;
     $first_index = NULL;
 
     foreach ($rows as $index => $row) {
-      // Récupérer l'ID depuis _relationship_entities sans charger le rendu.
+      // Les entités sont déjà hydratées par Views dans _relationship_entities.
       if (isset($row->_relationship_entities)) {
         foreach ($row->_relationship_entities as $rel_entity) {
           if ($rel_entity instanceof MediaInterface) {
-            $media_ids[] = $rel_entity->id();
+            $media_id = (int) $rel_entity->id();
+            if (!isset($seen_media_ids[$media_id])) {
+              $seen_media_ids[$media_id] = TRUE;
+              $media_entities[] = $rel_entity;
+            }
             if ($first_row === NULL) {
               $first_row = $row;
               $first_index = $index;
@@ -139,28 +144,21 @@ trait ProcessAlbumTrait {
       }
     }
 
-    if (empty($media_ids) || $first_row === NULL) {
+    if (empty($media_entities) || $first_row === NULL) {
       return NULL;
     }
 
-    // 2. Charger tous les médias en une seule requête loadMultiple
-    $medias_entities = $this->loadMediasLean($media_ids);
-
-    // 3. Récupérer les champs texte depuis la première row seulement
+    // 2. Récupérer les champs texte depuis la première row seulement
     $this->view->row_index = $first_index;
     $title                 = $this->getFieldValue($first_index, $this->options['image']['title_field'] ?? '');
     $author                = $this->getFieldValue($first_index, $this->options['image']['author_field'] ?? '');
     $description           = $this->getFieldValue($first_index, $this->options['image']['description_field'] ?? '');
 
-    // 4. Construire les données média
+    // 3. Construire les données média
     $medias = [];
     $first_media = NULL;
 
-    foreach ($media_ids as $media_id) {
-      $media = $medias_entities[$media_id] ?? NULL;
-      if (!$media) {
-        continue;
-      }
+    foreach ($media_entities as $media) {
       if (!$first_media) {
         $first_media = $media;
       }
@@ -178,7 +176,7 @@ trait ProcessAlbumTrait {
       return NULL;
     }
 
-    // 5. Lightgallery settings sur le premier média seulement
+    // 4. Lightgallery settings sur le premier média seulement
     $lightgallery_settings = $this->getLightgallerySettings($first_media);
     foreach ($lightgallery_settings['plugins'] ?? [] as $plugin_name => $plugin) {
       $lightgallery_album_settings['plugins'][$plugin_name] =
@@ -199,30 +197,6 @@ trait ProcessAlbumTrait {
       'medias'       => $medias,
       'nid'          => $first_row->_entity->get('nid')->getValue()[0]['value'] ?? '',
     ];
-  }
-
-  /**
-   * Charge uniquement les champs nécessaires pour un lot de médias.
-   *
-   * @param int[] $media_ids
-   *
-   * @return \Drupal\media\MediaInterface[]
-   */
-  private function loadMediasLean(array $media_ids): array {
-    if (empty($media_ids)) {
-      return [];
-    }
-
-    // Charger toutes les entités en une seule requête (pas de N+1)
-    $medias = \Drupal::entityTypeManager()
-      ->getStorage('media')
-      ->loadMultiple($media_ids);
-
-    // loadMultiple charge déjà uniquement les champs demandés
-    // par le bundle — l'optimisation suivante serait un storage
-    // avec field_names restreints, mais cela nécessite un patch core.
-    // L'essentiel est d'éviter le rendu Views par-dessus.
-    return $medias;
   }
 
   /**
