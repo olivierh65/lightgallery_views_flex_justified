@@ -53,7 +53,7 @@ trait ProcessAlbumTrait {
    * @return array
    *   Normalized structure for Twig.
    */
-  private function processGroupRecursive(array $groups, array &$build, array &$lightgallery_settings, int $depth = 0, $idx = 0) {
+  private function processGroupRecursive(array $groups, array &$build, array &$lightgallery_settings, int $depth = 0, $idx = 0, array $preloaded_medias = []) {
 
     $processed = [];
 
@@ -67,34 +67,31 @@ trait ProcessAlbumTrait {
         'groupid' => 'album-group-' . $idx,
       ];
 
-      // Check if this group contains rows (final results)
       if (isset($group_data['rows']) && is_array($group_data['rows'])) {
-
-        // DDetermine if the "rows" are actually other groups or real rows.
         $first_row = reset($group_data['rows']);
 
-        if (is_array($first_row) && isset($first_row['group']) && isset($first_row['level'])) {
-          // These are subgroups, process recursively.
+        // Détection fiable : sous-groupe = array avec clé 'rows'
+        // ResultRow réelle = objet.
+        if (is_array($first_row) && array_key_exists('rows', $first_row)) {
           $group_item['subgroups'] = $this->processGroupRecursive(
-          $group_data['rows'],
-          $build,
-          $lightgallery_settings,
-          $depth + 1,
-          $idx
+            $group_data['rows'],
+            $build,
+            $lightgallery_settings,
+            $depth + 1,
+            $idx,
+            $preloaded_medias
           );
         }
         else {
-          $r = $this->buildAlbumDataFromGroup($group_data['rows'], $idx, $lightgallery_settings);
+          $r = $this->buildAlbumDataFromGroup(
+            $group_data['rows'],
+            $idx,
+            $lightgallery_settings,
+            $preloaded_medias
+          );
           if ($r) {
             $group_item['albums'][] = $r;
           }
-          /* // These are real rows (ResultRow), process albums.
-          foreach ($group_data['rows'] as $index => $row) {
-          $album_data = $this->buildAlbumData($row, $index, $lightgallery_settings);
-          if ($album_data) {
-          $group_item['albums'][] = $album_data;
-          }
-          } */
         }
       }
       $processed[] = $group_item;
@@ -116,46 +113,83 @@ trait ProcessAlbumTrait {
    * @return array|null
    *   The album data or NULL on error.
    */
-  private function buildAlbumDataFromGroup($rows, $group_index, array &$lightgallery_album_settings): ?array {
+  private function buildAlbumDataFromGroup($rows, $group_index, array &$lightgallery_album_settings, array $preloaded_medias = []): ?array {
 
-    // 1. Récupérer directement les entités média déjà présentes dans les rows.
-    $media_entities = [];
-    $seen_media_ids = [];
     $first_row = NULL;
-    $first_index = NULL;
 
     foreach ($rows as $index => $row) {
-      // Les entités sont déjà hydratées par Views dans _relationship_entities.
-      if (isset($row->_relationship_entities)) {
+      if (!empty($row->_entity)) {
+        $first_row = $row;
+        break;
+      }
+    }
+
+    if (!$first_row) {
+      return NULL;
+    }
+
+    $parent_entity = $first_row->_entity;
+
+    // Extraire les IDs de médias depuis les relationship entities des rows
+    // de CE groupe (chaque row a un média spécifique via le JOIN SQL).
+    $group_media_ids = [];
+    foreach ($rows as $row) {
+      if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
         foreach ($row->_relationship_entities as $rel_entity) {
           if ($rel_entity instanceof MediaInterface) {
-            $media_id = (int) $rel_entity->id();
-            if (!isset($seen_media_ids[$media_id])) {
-              $seen_media_ids[$media_id] = TRUE;
-              $media_entities[] = $rel_entity;
-            }
-            if ($first_row === NULL) {
-              $first_row = $row;
-              $first_index = $index;
-            }
+            $mid = (int) $rel_entity->id();
+            $group_media_ids[$mid] = $mid;
             break;
           }
         }
       }
     }
 
-    if (empty($media_entities) || $first_row === NULL) {
+    // Récupération des médias : filtrer les pré-chargés par les IDs du groupe.
+    $media_entities = [];
+    if (!empty($group_media_ids) && !empty($preloaded_medias)) {
+      foreach ($group_media_ids as $mid) {
+        if (isset($preloaded_medias[$mid])) {
+          $media_entities[] = $preloaded_medias[$mid];
+        }
+      }
+    }
+    elseif (!empty($group_media_ids)) {
+      $media_entities = array_values(
+        \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($group_media_ids)
+      );
+    }
+
+    // Fallback : lecture depuis le champ de l'entité parente.
+    if (empty($media_entities)) {
+      $seen = [];
+      foreach ($rows as $row) {
+        if (empty($row->_entity) || !$row->_entity->hasField('field_media_album_av_media')) {
+          continue;
+        }
+        foreach ($row->_entity->get('field_media_album_av_media')->referencedEntities() as $media) {
+          $mid = (int) $media->id();
+          if (!isset($seen[$mid])) {
+            $seen[$mid] = TRUE;
+            $media_entities[] = $media;
+          }
+        }
+      }
+    }
+
+    if (empty($media_entities)) {
       return NULL;
     }
 
-    // 2. Récupérer les champs texte depuis la première row seulement
-    $this->view->row_index = $first_index;
-    $title                 = $this->getFieldValue($first_index, $this->options['image']['title_field'] ?? '');
-    $author                = $this->getFieldValue($first_index, $this->options['image']['author_field'] ?? '');
-    $description           = $this->getFieldValue($first_index, $this->options['image']['description_field'] ?? '');
+    // Champs texte directement depuis l'entité — pas de rendu Views.
+    $title       = $parent_entity->label();
+    $description = $parent_entity->hasField('field_media_album_av_description')
+      ? ($parent_entity->get('field_media_album_av_description')->value ?? '')
+      : '';
+    $author      = $this->getNodeAuthors($parent_entity);
 
-    // 3. Construire les données média
-    $medias = [];
+    // Construction des données média.
+    $medias      = [];
     $first_media = NULL;
 
     foreach ($media_entities as $media) {
@@ -176,11 +210,10 @@ trait ProcessAlbumTrait {
       return NULL;
     }
 
-    // 4. Lightgallery settings sur le premier média seulement
     $lightgallery_settings = $this->getLightgallerySettings($first_media);
     foreach ($lightgallery_settings['plugins'] ?? [] as $plugin_name => $plugin) {
       $lightgallery_album_settings['plugins'][$plugin_name] =
-            'lightgallery/lightgallery-' . $plugin_name;
+        'lightgallery/lightgallery-' . $plugin_name;
     }
 
     $album_id = 'album-group-' . $group_index;
@@ -195,7 +228,7 @@ trait ProcessAlbumTrait {
       'description'  => $description,
       'url'          => '',
       'medias'       => $medias,
-      'nid'          => $first_row->_entity->get('nid')->getValue()[0]['value'] ?? '',
+      'nid'          => $parent_entity->id(),
     ];
   }
 
@@ -290,6 +323,38 @@ trait ProcessAlbumTrait {
     // Un seul média par row.
       'medias' => [$media_data],
     ];
+  }
+
+  /**
+   * Get the author name from a node entity.
+   *
+   * Reads the configured author_field from the entity when available,
+   * otherwise falls back to the node owner's display name.
+   *
+   * @param \Drupal\Core\Entity\EntityInterface $entity
+   *   The entity to read the author from.
+   *
+   * @return string
+   *   The author name, or an empty string if not available.
+   */
+  private function getNodeAuthors(EntityInterface $entity): string {
+    $author_field = $this->options['image']['author_field'] ?? NULL;
+    if (!empty($author_field) && $entity->hasField($author_field)) {
+      $field = $entity->get($author_field);
+      if (!$field->isEmpty()) {
+        $first_item = $field->first();
+        // Handle entity reference fields (e.g. user reference).
+        if (method_exists($first_item, 'entity') && $first_item->entity) {
+          return $first_item->entity->label() ?? '';
+        }
+        return (string) ($first_item->value ?? '');
+      }
+    }
+    // Fallback: use the entity owner's display name.
+    if (method_exists($entity, 'getOwner')) {
+      return $entity->getOwner()->getDisplayName() ?? '';
+    }
+    return '';
   }
 
   /**
@@ -1007,79 +1072,87 @@ trait ProcessAlbumTrait {
    * @return mixed
    *   The field value.
    */
+
+  /**
+   * Version corrigée de getFieldValue pour fonctionner sans rendu Views.
+   *
+   * Cherche la valeur dans l'entité de base, puis dans les entités de
+   * relationship (média via JOIN), puis en dernier recours via le handler
+   * Views.
+   */
   public function getFieldValue($index, $field) {
-    $filters = $this->view->display_handler->getOption('filters');
-
-    $bundle = NULL;
-    foreach (['type', 'bundle', 'media_bundle'] as $key) {
-      if (!empty($filters[$key]['value'])) {
-        $bundle = $filters[$key]['value'];
-        if (is_array($bundle)) {
-          $bundle = reset($bundle);
-        }
-        break;
-      }
-    }
-
-    // 1. Retrieve base table.
-    $base_table = $this->view->storage->get('base_table');
-
-    // 2. table to entity type mapping.
-    $table_to_entity = [
-      'node_field_data' => 'node',
-      'media_field_data' => 'media',
-      'user_field_data' => 'user',
-      'taxonomy_term_field_data' => 'taxonomy_term',
-      // Add other mappings as needed.
-    ];
-    $entity_type_id = $table_to_entity[$base_table] ?? $base_table;
-
-    // 3. Get the row entity directly.
-    $row_entity = $this->view->result[$index]->_entity ?? NULL;
-    if (!$row_entity || !$row_entity->hasField($field)) {
+    $row = $this->view->result[$index] ?? NULL;
+    if (!$row) {
       return '';
     }
 
-    // 4. Get field definition.
-    $field_definitions = \Drupal::service('entity_field.manager')->getFieldDefinitions($entity_type_id, $bundle);
-    $field_definition = $field_definitions[$field] ?? NULL;
-
-    if (!$field_definition) {
-      return '';
+    // 1. Entité de base (node).
+    if (isset($row->_entity) && $row->_entity->hasField($field)) {
+      $items = $row->_entity->get($field);
+      if (!$items->isEmpty()) {
+        $val = $items->first()->getValue();
+        return $val['value'] ?? $val['target_id'] ?? '';
+      }
     }
 
-    $type = $field_definition->getType();
-
-    // Text field - render via field handler if exists, otherwise get raw value.
-    if (in_array($type, ['string', 'text', 'text_long', 'text_with_summary'])) {
-      // Check if field is in view's field handlers.
-      if (isset($this->view->field[$field])) {
-        $this->view->row_index = $index;
-        $value = $this->view->field[$field]->getValue($this->view->result[$index]);
-        unset($this->view->row_index);
-        return $value;
-      }
-      // Fallback: get raw value from entity.
-      else {
-        $field_value = $row_entity->get($field);
-        if (!$field_value->isEmpty()) {
-          return $field_value->first()->getValue()['value'] ?? '';
+    // 2. Entités de relationship (ex : média via JOIN).
+    if (isset($row->_relationship_entities) && is_array($row->_relationship_entities)) {
+      foreach ($row->_relationship_entities as $rel_entity) {
+        if ($rel_entity instanceof EntityInterface && $rel_entity->hasField($field)) {
+          $items = $rel_entity->get($field);
+          if (!$items->isEmpty()) {
+            $val = $items->first()->getValue();
+            return $val['value'] ?? $val['target_id'] ?? '';
+          }
         }
       }
     }
-    // Taxonomy term reference field.
-    elseif ($type === 'entity_reference' && $field_definition->getSetting('target_type') === 'taxonomy_term') {
-      $labels = [];
-      foreach ($row_entity->get($field) as $item) {
-        if ($item->entity) {
-          $labels[] = $item->entity->label();
-        }
-      }
-      // Array of labels to comma-separated string.
-      return implode(', ', $labels);
+
+    // 3. Fallback : handler Views (getValue sans rendu complet).
+    if (isset($this->view->field[$field])) {
+      $this->view->row_index = $index;
+      $value = $this->view->field[$field]->getValue($row);
+      $this->view->row_index = NULL;
+      return $value;
     }
 
     return '';
+  }
+
+  /**
+   * Résout récursivement les clés de groupement brutes en labels lisibles.
+   * Nécessaire quand renderGrouping() est appelé avec rendered=FALSE :
+   * les IDs de termes taxo sont alors utilisés comme clés de groupement.
+   */
+  private function resolveGroupLabels(array $groups): array {
+    $term_storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+    // Collecter tous les IDs numériques pour un loadMultiple() unique.
+    $term_ids = [];
+    array_walk_recursive($groups, function ($val, $key) use (&$term_ids) {
+      if ($key === 'group' && is_numeric($val) && $val > 0) {
+        $term_ids[(int) $val] = (int) $val;
+      }
+    });
+
+    $terms = !empty($term_ids) ? $term_storage->loadMultiple($term_ids) : [];
+
+    $resolve = function (array $groups) use (&$resolve, $terms): array {
+      foreach ($groups as &$group) {
+        $raw = $group['group'] ?? NULL;
+        if (is_numeric($raw) && isset($terms[(int) $raw])) {
+          $group['group'] = $terms[(int) $raw]->label();
+        }
+        if (!empty($group['rows'])) {
+          $first = reset($group['rows']);
+          if (is_array($first) && array_key_exists('rows', $first)) {
+            $group['rows'] = $resolve($group['rows']);
+          }
+        }
+      }
+      return $groups;
+    };
+
+    return $resolve($groups);
   }
 
 }
