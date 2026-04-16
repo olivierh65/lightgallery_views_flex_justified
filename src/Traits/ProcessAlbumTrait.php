@@ -2,6 +2,7 @@
 
 namespace Drupal\lightgallery_views_flex_justified\Traits;
 
+use Drupal\datetime\Plugin\Field\FieldType\DateTimeItem;
 use Drupal\file\FileInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\media\MediaInterface;
@@ -182,11 +183,22 @@ trait ProcessAlbumTrait {
     }
 
     // Champs texte directement depuis l'entité — pas de rendu Views.
-    $title       = $parent_entity->label();
+    $title = $parent_entity->label();
+    // @todo les champs de description et d'auteur devraient être configurables, pas codés en dur.
     $description = $parent_entity->hasField('field_media_album_av_description')
       ? ($parent_entity->get('field_media_album_av_description')->value ?? '')
       : '';
-    $author      = $this->getNodeAuthors($parent_entity);
+    // @todo verifier la recuperation des auteurs.
+    $author = $this->getNodeAuthors($parent_entity);
+
+    // Caption: read configured caption field from per-node grouping config.
+    $caption = '';
+    $media_caption_config = '';
+    if (isset($this->groupingConfigService)) {
+      $caption_config = $this->groupingConfigService->getNodeCaptionFieldConfig($parent_entity);
+      $caption = $this->resolveCaptionValue($parent_entity, $caption_config);
+      $media_caption_config = $this->groupingConfigService->getNodeMediaCaptionFieldConfig($parent_entity);
+    }
 
     // Construction des données média.
     $medias      = [];
@@ -202,6 +214,15 @@ trait ProcessAlbumTrait {
       }
       $media_data = $this->buildMediaItemData($media, $source_field);
       if ($media_data) {
+        if (!empty($media_caption_config)) {
+          $media_caption = $this->resolveCaptionValue($media, $media_caption_config);
+          if ($media_caption !== '') {
+            // Keep compatibility with existing Twig that reads media.description.
+            // @todo refactor Twig to read media.caption and remove this duplication.
+            $media_data['description'] = $media_caption;
+            $media_data['caption'] = $media_caption;
+          }
+        }
         $medias[] = $media_data;
       }
     }
@@ -226,6 +247,7 @@ trait ProcessAlbumTrait {
       'title'        => $title,
       'author'       => $author,
       'description'  => $description,
+      'caption'      => $caption,
       'url'          => '',
       'medias'       => $medias,
       'nid'          => $parent_entity->id(),
@@ -442,7 +464,54 @@ trait ProcessAlbumTrait {
   }
 
   /**
-   * Charge uniquement le champ thumbnail du média vidéo.
+   * Resolve the caption value from an entity using a caption field config.
+   *
+   * @param \Drupal\Core\Entity\EntityInterface $entity
+   *   The entity to read the caption from.
+   * @param string $caption_config
+   *   Caption field config in format "type|field_name" or plain "field_name".
+   *
+   * @return string
+   *   The resolved caption value, or empty string.
+   */
+  private function resolveCaptionValue(EntityInterface $entity, string $caption_config): string {
+    if (empty($caption_config)) {
+      return '';
+    }
+
+    // Parse "type|field_name" or plain "field_name".
+    if (str_contains($caption_config, '|')) {
+      [, $field_name] = explode('|', $caption_config, 2);
+    }
+    else {
+      $field_name = $caption_config;
+    }
+
+    if (empty($field_name) || !$entity->hasField($field_name)) {
+      return '';
+    }
+
+    $field = $entity->get($field_name);
+    if ($field->isEmpty()) {
+      return '';
+    }
+
+    $first = $field->first();
+    // Entity reference (taxonomy term): return label.
+    if (method_exists($first, 'entity') && $first->entity) {
+      return (string) ($first->entity->label() ?? '');
+    }
+    // Date field: format the date value.
+    if (isset($first->value) && ($first instanceof DateTimeItem)) {
+      // @todo gérer les formats de date configurables, pas juste d/m/Y.
+      return $first->date->format('d/m/Y') ?? '';
+    }
+    // Text / string fields.
+    return (string) ($first->value ?? '');
+  }
+
+  /**
+   *
    */
   private function buildVideoThumbnailUrl(MediaInterface $media): string {
     if ($media->get('thumbnail')->isEmpty()) {

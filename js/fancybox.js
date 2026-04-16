@@ -28,7 +28,7 @@
             return;
           }
 
-          if (typeof window.Fancybox !== "function") {
+          if (!window.Fancybox || typeof window.Fancybox.show !== "function") {
             console.error("Fancybox is not loaded!");
             return;
           }
@@ -48,29 +48,52 @@
             }
           });
 
-          // Ouvrir Fancybox sur le premier élément
-          Fancybox.show(
-            $links.map(function () {
-              return {
-                src: $(this).attr("href"),
-                thumb: $(this).find("img").attr("src"),
-                caption: $(this).find(".fancybox_caption").html() || "",
+          // Build explicit items to avoid undefined src resolution.
+          const items = $links
+            .map(function () {
+              const $link = $(this);
+              const src = $link.attr("href") || $link.data("src");
+
+              // Skip malformed entries; they trigger /undefined requests.
+              if (!src || src === "undefined") {
+                return null;
+              }
+
+              const item = {
+                src: src,
+                thumb: $link.attr("data-thumb") || undefined,
+                caption: $link.attr("data-caption") || "",
               };
-            }).get(),
-            {
-    Carousel: {
-      preload: 0, // clé importante
-    },
-    Images: {
-      preload: 0, // réduit charge serveur
-    },
-    Thumbs: {
-      minCount: 1,
-      showOnStart: true,
-      type: "modern",
-    }
-  }
-          );
+
+              const mediaType = $link.attr("data-type");
+              if (mediaType) {
+                item.type = mediaType;
+              }
+
+              return item;
+            })
+            .get()
+            .filter(Boolean);
+
+          if (!items.length) {
+            console.warn("No valid Fancybox items found in album:", albumId);
+            return;
+          }
+
+          // Ouvrir Fancybox sur le premier élément
+          window.Fancybox.show(items, {
+            Carousel: {
+              preload: 0,
+            },
+            Images: {
+              preload: 0,
+            },
+            Thumbs: {
+              minCount: 1,
+              showOnStart: true,
+              type: "modern",
+            },
+          });
 
         });
 
