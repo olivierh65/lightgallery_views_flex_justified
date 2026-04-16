@@ -288,6 +288,7 @@ class AlbumFancyboxGallery extends StylePluginBase {
       $build['#attached']['library'][] = $plugin;
     }
 
+    // @todo options... verifier si toujours utilisées après refactor.
     $build['#options'] += [
       'captions' => $this->options['image']['captions'] ?? TRUE,
     ];
