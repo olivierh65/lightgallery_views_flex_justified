@@ -146,18 +146,40 @@ trait ProcessAlbumTrait {
       }
     }
 
+    // Préserver l'ordre défini par l'utilisateur dans le champ médias du node.
+    // On reconstruit une liste ordonnée des MIDs du groupe selon les deltas.
+    $ordered_group_media_ids = [];
+    if (!empty($group_media_ids)
+      && $parent_entity->hasField('field_media_album_av_media')) {
+      foreach ($parent_entity->get('field_media_album_av_media')->getValue() as $item) {
+        $mid = (int) ($item['target_id'] ?? 0);
+        if ($mid && isset($group_media_ids[$mid])) {
+          $ordered_group_media_ids[$mid] = $mid;
+        }
+      }
+      // Sécurité: ajoute les MIDs restants qui ne seraient pas dans la liste.
+      foreach ($group_media_ids as $mid) {
+        if (!isset($ordered_group_media_ids[$mid])) {
+          $ordered_group_media_ids[$mid] = $mid;
+        }
+      }
+    }
+    else {
+      $ordered_group_media_ids = $group_media_ids;
+    }
+
     // Récupération des médias : filtrer les pré-chargés par les IDs du groupe.
     $media_entities = [];
-    if (!empty($group_media_ids) && !empty($preloaded_medias)) {
-      foreach ($group_media_ids as $mid) {
+    if (!empty($ordered_group_media_ids) && !empty($preloaded_medias)) {
+      foreach ($ordered_group_media_ids as $mid) {
         if (isset($preloaded_medias[$mid])) {
           $media_entities[] = $preloaded_medias[$mid];
         }
       }
     }
-    elseif (!empty($group_media_ids)) {
+    elseif (!empty($ordered_group_media_ids)) {
       $media_entities = array_values(
-        \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($group_media_ids)
+        \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($ordered_group_media_ids)
       );
     }
 
