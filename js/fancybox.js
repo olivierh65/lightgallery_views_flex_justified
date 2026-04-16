@@ -58,13 +58,18 @@
               };
             }).get(),
             {
-              Thumbs: {
-                autoStart: true, // active le carrousel thumbnails
-              },
-              Images: {
-                preload: 1, // limite le preload → évite surcharge serveur
-              },
-            }
+    Carousel: {
+      preload: 0, // clé importante
+    },
+    Images: {
+      preload: 0, // réduit charge serveur
+    },
+    Thumbs: {
+      minCount: 1,
+      showOnStart: true,
+      type: "modern",
+    }
+  }
           );
 
         });
