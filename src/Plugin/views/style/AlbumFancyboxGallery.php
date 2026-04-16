@@ -602,72 +602,89 @@ class AlbumFancyboxGallery extends StylePluginBase {
    *   The merged groups from all nodes.
    */
   protected function renderWithPerNodeGrouping($nid_field, array &$build, array &$lightgallery_settings) {
-    // PREMIÈRE PASSE : Grouper uniquement par NID.
-    $nid_grouping = [
-      [
-        'field' => $nid_field,
-        'rendered' => TRUE,
-        'rendered_strip' => FALSE,
-      ],
-    ];
 
-    $grouped_by_nid = $this->renderGrouping($this->view->result, $nid_grouping, TRUE);
+    // ÉTAPE 1 : Groupement manuel par NID + collecte des MIDs depuis les
+    // propriétés SQL de la row (déjà dans le résultat, zéro requête).
+    $grouped_by_nid = [];
+    $all_mids       = [];
 
+    foreach ($this->view->result as $index => $row) {
+      $nid = $row->nid ?? ($row->_entity?->id() ?? NULL);
+      if (!$nid) {
+        continue;
+      }
+
+      $grouped_by_nid[$nid]['rows'][$index] = $row;
+
+      // Le MID est déjà dans la row grâce au JOIN SQL de Views.
+      $mid_key = 'media_field_data_node__field_media_album_av_media_mid';
+      $mid = $row->$mid_key ?? NULL;
+      if ($mid) {
+        $all_mids[(int) $mid] = (int) $mid;
+        $grouped_by_nid[$nid]['mids'][(int) $mid] = (int) $mid;
+      }
+    }
+
+    // ÉTAPE 2 : Charger TOUS les médias en une seule requête.
+    $all_media_entities = !empty($all_mids)
+      ? \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($all_mids)
+      : [];
+
+    // ÉTAPE 3 : Traiter chaque album.
     $all_groups = [];
 
-    // DEUXIÈME PASSE : Pour chaque NID (chaque album)
-    foreach ($grouped_by_nid as $nid_group) {
-      // Récupérer les rows de ce groupe.
-      $rows = $nid_group['rows'] ?? [];
+    foreach ($grouped_by_nid as $nid => $nid_data) {
+      $rows = $nid_data['rows'];
       if (empty($rows)) {
         continue;
       }
 
-      // Extraire le NID depuis la première row.
+      // Node déjà chargé par Views dans _entity — pas de Node::load().
       $first_row = reset($rows);
-      $nid = $this->getFieldValueFromRow($first_row, $nid_field);
-
-      if (!$nid || !is_numeric($nid)) {
-        continue;
-      }
-
-      $node = Node::load($nid);
+      $node = $first_row->_entity ?? NULL;
       if (!$node) {
         continue;
       }
 
-      // Récupérer la config de regroupement spécifique à ce node.
+      // Médias de cet album indexés par MID pour lookup rapide dans les sous-groupes.
+      $album_medias = [];
+      foreach ($nid_data['mids'] ?? [] as $mid) {
+        if (isset($all_media_entities[$mid])) {
+          $album_medias[$mid] = $all_media_entities[$mid];
+        }
+      }
+
+      // ÉTAPE 4 : Sous-groupement spécifique à ce node.
       $node_grouping_fields = $this->groupingConfigService->getAlbumGroupingFields($node);
 
       if (!empty($node_grouping_fields)) {
-        $grouping = $this->groupingConfigService->convertFieldsToViewGrouping($node_grouping_fields, TRUE);
+        // Groupement par champs de taxonomie du média.
+        // On groupe manuellement pour éviter renderGrouping avec rendered=TRUE.
+        $grouping = $this->groupingConfigService->convertFieldsToViewGrouping($node_grouping_fields, FALSE);
+        $album_groups_raw = $this->renderGrouping($rows, $grouping, FALSE);
+        $album_groups_raw = $this->resolveGroupLabels($album_groups_raw);
+        $album_groups_processed = $this->processGroupRecursive(
+          $album_groups_raw,
+          $build,
+          $lightgallery_settings,
+          0,
+          0,
+          $album_medias
+        );
       }
       else {
-        // Si pas de config spécifique, ne pas regrouper davantage.
-        $grouping = [];
+        // Pas de sous-groupement : un seul groupe = tout l'album.
+        $album_groups_processed = $this->processGroupRecursive(
+          [['group' => $node->label(), 'level' => 0, 'rows' => $rows]],
+          $build,
+          $lightgallery_settings,
+          0,
+          0,
+          $album_medias
+        );
       }
 
-      // Traiter uniquement ces rows avec la config de l'album.
-      $result = array_values($rows);
-      $result = $rows;
-      $album_groups_raw = $this->renderGrouping($result, $grouping, TRUE);
-
-      // IMPORTANT : Appeler processGroupRecursive sur CE sous-groupe spécifique.
-      $album_groups_processed = $this->processGroupRecursive($album_groups_raw, $build, $lightgallery_settings);
-
-      // Wrapper dans un niveau parent (l'album) - level -1 pour le différencier.
       if (!empty($album_groups_processed)) {
-        /* $all_groups[] = [
-        // Ou juste $node->getTitle() si vous ne voulez pas de lien.
-        'title' => $node->toLink()->toString(),
-        // Niveau spécial pour l'album (géré dans votre Twig)
-        'level' => -1,
-        'groupid' => 'album-node-' . $nid,
-        'subgroups' => $album_groups_processed,
-        'albums' => [],
-        'nid' => $nid,
-        ]; */
-
         $all_groups = array_merge($all_groups, $album_groups_processed);
       }
     }
