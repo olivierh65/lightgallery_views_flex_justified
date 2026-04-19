@@ -277,7 +277,7 @@ class AlbumFancyboxGallery extends StylePluginBase {
       );
     }
     else {
-      $grouped_rows     = $this->renderGrouping($this->view->result, $this->options['grouping'], TRUE);
+      $grouped_rows     = $this->renderGrouping($this->view->result, $this->options['grouping'], FALSE);
       $build['#groups'] = $this->processGroupRecursive(
       $grouped_rows,
       $build,
@@ -463,6 +463,10 @@ class AlbumFancyboxGallery extends StylePluginBase {
    * Markup object as an array key.
    */
   public function renderGrouping($records, $groupings = [], $group_rendered = NULL) {
+
+    if ($group_rendered === NULL) {
+      $group_rendered = FALSE;
+    }
 
     return parent::renderGrouping($records, $groupings, $group_rendered);
   }
