@@ -173,6 +173,9 @@
     close: function ($modal, $target, html, newSettings) {
       Drupal.dialog($modal[0]).close();
 
+      // Nettoyer le tempstore.
+      this.cleanup();
+
       if (html && $target.length) {
         $target.html(html);
 
@@ -198,6 +201,9 @@
       $modal.find(".album-loading-message").text(message);
       $modal.find(".album-loading-bar").css("background", "#c00");
 
+      // Nettoyer le tempstore en cas d'erreur aussi.
+      this.cleanup();
+
       // N'ajouter le bouton que s'il n'existe pas déjà.
       if (!$modal.find(".album-error-close").length) {
         $modal.append(
@@ -212,5 +218,17 @@
         );
       }
     },
+
+    cleanup: function () {
+      const cfg = drupalSettings.albumGalleryProgress || null;
+      if (!cfg || !cfg.token) return;
+
+      $.ajax({
+        url: Drupal.url("album-gallery/cleanup/" + cfg.token),
+        method: "POST",
+        // Fire and forget — pas besoin d'attendre la réponse.
+      });
+    },
+
   };
 })(jQuery, Drupal, drupalSettings, once);
