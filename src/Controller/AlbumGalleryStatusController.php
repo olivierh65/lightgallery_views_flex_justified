@@ -86,13 +86,26 @@ class AlbumGalleryStatusController extends ControllerBase {
     }
     $view->execute();
 
-    // Passer le token au style plugin avant render().
-    $view->style_plugin->setRenderToken($render_token);
+    try {
+      $view->style_plugin->setRenderToken($render_token);
+      $build = $view->style_plugin->render();
+    }
+    catch (\Throwable $e) {
+      $tempstore = \Drupal::service('tempstore.private')->get('album_gallery');
 
-    // render() va écrire dans tempstore pendant son exécution.
-    $build = $view->style_plugin->render();
+      // Écrire l'erreur dans tempstore pour que le polling JS l'affiche.
+      $tempstore->set($render_token, [
+        'status'  => 'error',
+        'message' => $e->getMessage(),
+      ]);
 
-    // Extraire drupalSettings AVANT renderRoot() qui les consomme et les vide.
+      \Drupal::logger('album_gallery')->error(
+        'Error rendering view: @message', ['@message' => $e->getMessage()]
+      );
+
+      return new JsonResponse(['status' => 'error', 'error' => $e->getMessage()], 500);
+    }
+
     $drupal_settings = $build['#attached']['drupalSettings'] ?? [];
 
     $html = (string) \Drupal::service('renderer')->renderRoot($build);

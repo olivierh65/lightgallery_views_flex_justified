@@ -3,7 +3,10 @@
     attach: function (context, settings) {
       console.log("=== Album Gallery (Flexbox + Fancybox) ===");
 
-      if (!drupalSettings.settings || !drupalSettings.settings.albumFancybox) {
+      if (!drupalSettings.settings?.albumFancybox) {
+        console.log(
+          "Album Fancybox settings not found, skipping initialization.",
+        );
         return;
       }
 

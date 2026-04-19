@@ -59,6 +59,13 @@
             $modal.find(".album-loading-bar").css("width", "100%");
             $modal.find(".album-loading-message").text(Drupal.t("Terminé !"));
             self.waitForHtml($modal, $target, 0);
+          } else if (data.status === "error") {
+            // Arrêter le polling et afficher le message d'erreur.
+            self.error(
+              $modal,
+              data.message ||
+                Drupal.t("Une erreur est survenue lors du chargement."),
+            );
           } else {
             setTimeout(function () {
               self.poll(token, $modal, $target);
