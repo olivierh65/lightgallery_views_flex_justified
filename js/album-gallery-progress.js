@@ -19,6 +19,8 @@
         // Réinitialiser le stockage HTML/settings.
         AlbumGalleryProgress._html = null;
         AlbumGalleryProgress._drupalSettings = null;
+        AlbumGalleryProgress._renderDone = false;
+        AlbumGalleryProgress._renderFailed = false;
 
         // Lancer le rendu AJAX (requête longue).
         AlbumGalleryProgress.startRender(cfg.renderUrl, $modal, $target);
@@ -39,18 +41,22 @@
       const self = this;
       self._html = null;
       self._drupalSettings = null;
+      self._renderDone = false;
+      self._renderFailed = false; // ← nouveau flag d'échec
 
       $.getJSON(renderUrl)
         .done(function (data) {
           self._html = data.html || "";
           self._drupalSettings = data.drupalSettings || null;
+          self._renderDone = true;
         })
-        .fail(function () {
-          // Ne pas appeler error() ici — le polling détectera status=error
-          // depuis tempstore et affichera le message approprié.
-          // On log juste en console.
+        .fail(function (jqXHR) {
+          // La requête HTTP a échoué — signaler l'échec pour débloquer le polling.
+          self._renderFailed = true;
           console.error(
-            "Render request failed — polling will handle the error display.",
+            "Render request failed (HTTP " +
+              jqXHR.status +
+              ") — polling will handle the error display.",
           );
         });
     },
@@ -62,21 +68,46 @@
         .done(function (data) {
           self.updateProgress($modal, data);
 
-          if (data.status === "complete") {
-            $modal.find(".album-loading-bar").css("width", "100%");
-            $modal.find(".album-loading-message").text(Drupal.t("Terminé !"));
-            self.waitForHtml($modal, $target, 0);
-          } else if (data.status === "error") {
-            // Arrêter le polling et afficher le message d'erreur.
+          if (data.status === "error") {
+            // Erreur côté serveur — afficher immédiatement.
             self.error(
               $modal,
               data.message ||
                 Drupal.t("Une erreur est survenue lors du chargement."),
             );
+          } else if (data.status === "complete") {
+            if (self._renderDone) {
+              // Rendu PHP confirmé terminé et HTML disponible.
+              $modal.find(".album-loading-bar").css("width", "100%");
+              $modal.find(".album-loading-message").text(Drupal.t("Terminé !"));
+              self.waitForHtml($modal, $target, 0);
+            } else if (self._renderFailed) {
+              // startRender() a échoué mais tempstore dit complete
+              // → incohérence, afficher une erreur.
+              self.error(
+                $modal,
+                Drupal.t("Erreur lors du chargement de la galerie."),
+              );
+            } else {
+              // status=complete reçu mais startRender() pas encore terminé
+              // → continuer à attendre.
+              setTimeout(function () {
+                self.poll(token, $modal, $target);
+              }, 200);
+            }
           } else {
-            setTimeout(function () {
-              self.poll(token, $modal, $target);
-            }, 500);
+            // processing, waiting, starting...
+            if (self._renderFailed) {
+              // startRender() a échoué mais le tempstore n'a pas encore
+              // été mis à jour avec status=error → attendre un peu.
+              setTimeout(function () {
+                self.poll(token, $modal, $target);
+              }, 500);
+            } else {
+              setTimeout(function () {
+                self.poll(token, $modal, $target);
+              }, 500);
+            }
           }
         })
         .fail(function () {
@@ -229,6 +260,5 @@
         // Fire and forget — pas besoin d'attendre la réponse.
       });
     },
-
   };
 })(jQuery, Drupal, drupalSettings, once);
