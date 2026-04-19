@@ -472,6 +472,14 @@ class AlbumFancyboxGallery extends StylePluginBase {
   }
 
   /**
+   * {@inheritdoc}
+   * Force FALSE pour éviter le rendu des field handlers même avec row plugin fields.
+   */
+  public function usesFields() {
+    return FALSE;
+  }
+
+  /**
    * Sort groups by node grouping configuration using terms_rendered.
    *
    * @param array $groups
