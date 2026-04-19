@@ -117,4 +117,15 @@ class AlbumGalleryStatusController extends ControllerBase {
     ]);
   }
 
+  /**
+   *
+   */
+  public function cleanup(Request $request, string $token): JsonResponse {
+    \Drupal::service('tempstore.private')
+      ->get('album_gallery')
+      ->delete($token);
+
+    return new JsonResponse(['status' => 'cleaned']);
+  }
+
 }

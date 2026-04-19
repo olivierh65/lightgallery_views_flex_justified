@@ -22,3 +22,11 @@ album_gallery.render:
   requirements:
     _permission: 'access content'
     term_id: '\d+|all'
+
+album_gallery.cleanup:
+  path: '/album-gallery/cleanup/{token}'
+  defaults:
+    _controller: '\Drupal\lightgallery_views_flex_justified\Controller\AlbumGalleryStatusController::cleanup'
+  requirements:
+    _permission: 'access content'
+  methods: [DELETE, POST]
