@@ -21,6 +21,7 @@
         AlbumGalleryProgress._drupalSettings = null;
         AlbumGalleryProgress._renderDone = false;
         AlbumGalleryProgress._renderFailed = false;
+        AlbumGalleryProgress._pollingActive  = false;
 
         // Lancer le rendu AJAX (requête longue).
         AlbumGalleryProgress.startRender(cfg.renderUrl, $modal, $target);
@@ -64,53 +65,50 @@
     poll: function (token, $modal, $target) {
       const self = this;
 
+      // Arrêter si le polling a été désactivé (fermeture manuelle du modal).
+      if (!self._pollingActive) {
+        console.log("Polling arrêté.");
+        return;
+      }
+
       $.getJSON(Drupal.url("album-gallery/status/" + token))
         .done(function (data) {
+          // Vérifier à nouveau après la réponse AJAX (fermeture pendant la requête).
+          if (!self._pollingActive) return;
+
           self.updateProgress($modal, data);
 
           if (data.status === "error") {
-            // Erreur côté serveur — afficher immédiatement.
+            self._pollingActive = false;
             self.error(
               $modal,
-              data.message ||
-                Drupal.t("Une erreur est survenue lors du chargement."),
+              data.message || Drupal.t("Une erreur est survenue."),
             );
           } else if (data.status === "complete") {
             if (self._renderDone) {
-              // Rendu PHP confirmé terminé et HTML disponible.
+              self._pollingActive = false;
               $modal.find(".album-loading-bar").css("width", "100%");
               $modal.find(".album-loading-message").text(Drupal.t("Terminé !"));
               self.waitForHtml($modal, $target, 0);
             } else if (self._renderFailed) {
-              // startRender() a échoué mais tempstore dit complete
-              // → incohérence, afficher une erreur.
+              self._pollingActive = false;
               self.error(
                 $modal,
                 Drupal.t("Erreur lors du chargement de la galerie."),
               );
             } else {
-              // status=complete reçu mais startRender() pas encore terminé
-              // → continuer à attendre.
               setTimeout(function () {
                 self.poll(token, $modal, $target);
               }, 200);
             }
           } else {
-            // processing, waiting, starting...
-            if (self._renderFailed) {
-              // startRender() a échoué mais le tempstore n'a pas encore
-              // été mis à jour avec status=error → attendre un peu.
-              setTimeout(function () {
-                self.poll(token, $modal, $target);
-              }, 500);
-            } else {
-              setTimeout(function () {
-                self.poll(token, $modal, $target);
-              }, 500);
-            }
+            setTimeout(function () {
+              self.poll(token, $modal, $target);
+            }, 500);
           }
         })
         .fail(function () {
+          if (!self._pollingActive) return;
           setTimeout(function () {
             self.poll(token, $modal, $target);
           }, 1000);
@@ -137,6 +135,8 @@
     },
 
     openModal: function () {
+      const self = this;
+
       const $modal = $(
         '<div id="album-progress-modal">' +
           '<div class="album-loading-spinner"></div>' +
@@ -150,12 +150,25 @@
           "</div>",
       );
 
-      Drupal.dialog($modal[0], {
+      const dialog = Drupal.dialog($modal[0], {
         title: Drupal.t("Chargement de la galerie"),
         width: 420,
         closeOnEscape: false,
         buttons: [],
-      }).showModal();
+      });
+
+      // Écouter la fermeture du dialog (croix, Escape, etc.)
+      $modal[0].addEventListener("dialogclose", function () {
+        if (window._albumGalleryStarted) {
+          console.log("Modal fermé manuellement — arrêt du polling.");
+          self._pollingActive = false;
+          self.cleanup();
+          window._albumGalleryStarted = false;
+        }
+      });
+
+      dialog.showModal();
+      self._pollingActive = true; // ← activer le polling
 
       return $modal;
     },
@@ -202,6 +215,7 @@
     },
 
     close: function ($modal, $target, html, newSettings) {
+      this._pollingActive = false;
       Drupal.dialog($modal[0]).close();
 
       // Nettoyer le tempstore.
@@ -229,6 +243,7 @@
     },
 
     error: function ($modal, message) {
+      this._pollingActive = false;
       $modal.find(".album-loading-message").text(message);
       $modal.find(".album-loading-bar").css("background", "#c00");
 
