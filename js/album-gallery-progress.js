@@ -13,15 +13,16 @@
       if (cfg && cfg.enabled && cfg.token && !window._albumGalleryStarted) {
         window._albumGalleryStarted = true;
 
-        const $modal = AlbumGalleryProgress.openModal();
-        const $target = $("#album-gallery-target");
-
-        // Réinitialiser le stockage HTML/settings.
+         // Réinitialiser AVANT openModal() qui active _pollingActive.
         AlbumGalleryProgress._html = null;
         AlbumGalleryProgress._drupalSettings = null;
         AlbumGalleryProgress._renderDone = false;
         AlbumGalleryProgress._renderFailed = false;
-        AlbumGalleryProgress._pollingActive  = false;
+        // Ne pas réinitialiser _pollingActive ici — openModal() s'en charge.
+        // AlbumGalleryProgress._pollingActive  = false;
+
+        const $modal = AlbumGalleryProgress.openModal();
+        const $target = $("#album-gallery-target");
 
         // Lancer le rendu AJAX (requête longue).
         AlbumGalleryProgress.startRender(cfg.renderUrl, $modal, $target);
