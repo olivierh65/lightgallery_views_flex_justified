@@ -53,3 +53,18 @@ fancybox_grid:
   dependencies:
     - core/drupal
     - core/drupalSettings
+
+# Nouvelle librairie pour le chargement progressif
+album_gallery_progress:
+  js:
+    js/album-gallery-progress.js: {}
+  css:
+    component:
+      css/album-gallery-progress.css: {}
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - core/once
+    - core/drupalSettings
+    - core/drupal.dialog.ajax   # ← pour Drupal.dialog()
+    - core/drupal.ajax           # ← pour Drupal.ajax()

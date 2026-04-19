@@ -14,8 +14,6 @@ views.style.album_flexbox_gallery:
           type: string
         url_field:
           type: string
-        image_thumbnail_style:
-          type: string
         captions:
           type: boolean
     grouping:

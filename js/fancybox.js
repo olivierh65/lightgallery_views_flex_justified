@@ -1,10 +1,14 @@
 (function ($, Drupal, drupalSettings, once) {
-
   Drupal.behaviors.fancyboxAlbums = {
     attach: function (context, settings) {
       console.log("=== Album Gallery (Flexbox + Fancybox) ===");
 
-      const albumSettings = drupalSettings.settings.fancybox || {};
+      if (!drupalSettings.settings || !drupalSettings.settings.albumFancybox) {
+        return;
+      }
+
+      const albumSettings = drupalSettings.settings.albumFancybox || {};
+
       const itemSelector = ".flexbox-item.album-item";
 
       // Ajustement dimensions thumbnails (inchangé)
@@ -16,7 +20,6 @@
 
       // Initialisation Fancybox
       $(once("fb-init", ".album-cover", context)).each(function () {
-
         $(this).on("click", function (e) {
           e.preventDefault();
 
@@ -94,13 +97,10 @@
               type: "modern",
             },
           });
-
         });
-
       });
 
       console.log("✓ Album gallery initialized (Fancybox)");
     },
   };
-
 })(jQuery, Drupal, drupalSettings, window.once);

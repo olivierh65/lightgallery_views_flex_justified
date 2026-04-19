@@ -222,6 +222,13 @@ trait ProcessAlbumTrait {
       $media_caption_config = $this->groupingConfigService->getNodeMediaCaptionFieldConfig($parent_entity);
     }
 
+    $album_image_style = NULL;
+    $album_thumbnail_style = NULL;
+    if (isset($this->groupingConfigService)) {
+      $album_image_style = $this->groupingConfigService->getNodeImageStyleConfig($parent_entity);
+      $album_thumbnail_style = $this->groupingConfigService->getNodeThumbnailStyleConfig($parent_entity);
+    }
+
     // Construction des données média.
     $medias      = [];
     $first_media = NULL;
@@ -234,7 +241,7 @@ trait ProcessAlbumTrait {
       if (!$source_field) {
         continue;
       }
-      $media_data = $this->buildMediaItemData($media, $source_field);
+      $media_data = $this->buildMediaItemData($media, $source_field, $album_image_style, $album_thumbnail_style);
       if ($media_data) {
         if (!empty($media_caption_config)) {
           $media_caption = $this->resolveCaptionValue($media, $media_caption_config);
@@ -408,11 +415,15 @@ trait ProcessAlbumTrait {
    *   The media entity.
    * @param string $source_field
    *   The source field name.
+    * @param string|null $image_style_name
+    *   Full image style name from per-album configuration.
+    * @param string|null $thumbnail_style_name
+    *   Thumbnail style name from per-album configuration.
    *
    * @return array|null
    *   The media item data or NULL on error.
    */
-  private function buildMediaItemData(MediaInterface $media, string $source_field): ?array {
+  private function buildMediaItemData(MediaInterface $media, string $source_field, ?string $image_style_name = NULL, ?string $thumbnail_style_name = NULL): ?array {
     $plugin_id = $media->getSource()->getPluginId();
 
     switch ($plugin_id) {
@@ -429,10 +440,11 @@ trait ProcessAlbumTrait {
 
         $uri = $file->getFileUri();
         $original_url = $this->fileUrlGenerator->generateAbsoluteString($uri);
-        $thumbnail_url = $this->buildStyledUrl($uri, $original_url);
+        $thumbnail_url = $this->buildStyledUrl($uri, $original_url, $thumbnail_style_name);
 
         return [
-          'url'       => $original_url,
+          // 'url'       => $original_url,
+          'url'       => $this->buildImageUrl($uri, $original_url, $image_style_name),
           'mime_type' => $file->getMimeType(),
           'alt'       => $item->get('alt')->getValue() ?? '',
           'title'     => $item->get('title')->getValue() ?? '',
@@ -451,7 +463,7 @@ trait ProcessAlbumTrait {
         }
 
         // Thumbnail : uniquement le champ 'thumbnail', pas de rendu complet.
-        $thumbnail_url = $this->buildVideoThumbnailUrl($media);
+        $thumbnail_url = $this->buildVideoThumbnailUrl($media, $thumbnail_style_name);
 
         return [
           'url'       => $this->fileUrlGenerator->generateAbsoluteString($file->getFileUri()),
@@ -470,8 +482,32 @@ trait ProcessAlbumTrait {
   /**
    * Factorise la génération d'URL stylisée pour éviter la duplication.
    */
-  private function buildStyledUrl(string $uri, string $fallback): string {
-    $style_name = $this->options['image']['image_thumbnail_style'] ?? '';
+  private function buildStyledUrl(string $uri, string $fallback, ?string $style_name = NULL): string {
+    if ($style_name === NULL) {
+      // Keep compatibility with old Views style option.
+      $style_name = $this->options['image']['image_thumbnail_style'] ?? '';
+    }
+    if (!$style_name) {
+      return $fallback;
+    }
+    try {
+      $style = ImageStyle::load($style_name);
+      return $style ? $style->buildUrl($uri) : $fallback;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('album_gallery')->error('Image style error: @e', ['@e' => $e->getMessage()]);
+      return $fallback;
+    }
+  }
+
+  /**
+   * Factorise la génération d'URL stylisée pour éviter la duplication.
+   */
+  private function buildImageUrl(string $uri, string $fallback, ?string $style_name = NULL): string {
+    if ($style_name === NULL) {
+      // Legacy fallback for displays not using per-album configuration.
+      $style_name = 'media_album_av';
+    }
     if (!$style_name) {
       return $fallback;
     }
@@ -535,7 +571,7 @@ trait ProcessAlbumTrait {
   /**
    *
    */
-  private function buildVideoThumbnailUrl(MediaInterface $media): string {
+  private function buildVideoThumbnailUrl(MediaInterface $media, ?string $thumbnail_style_name = NULL): string {
     if ($media->get('thumbnail')->isEmpty()) {
       return $this->getDefaultImageUrl('Video_error.png');
     }
@@ -545,7 +581,8 @@ trait ProcessAlbumTrait {
     }
     return $this->buildStyledUrl(
         $thumbnail->getFileUri(),
-        $this->fileUrlGenerator->generateAbsoluteString($thumbnail->getFileUri())
+      $this->fileUrlGenerator->generateAbsoluteString($thumbnail->getFileUri()),
+      $thumbnail_style_name
     );
   }
 
