@@ -134,7 +134,9 @@
         .find(".album-loading-bar")
         .css("width", (data.progress || 0) + "%");
 
-      if (data.processed && data.total) {
+      if (data.message) {
+        $modal.find(".album-loading-message").text(data.message);
+      } else if (data.processed && data.total) {
         $modal.find(".album-loading-message").text(
           Drupal.t("Album @current sur @total", {
             "@current": data.processed,
@@ -142,9 +144,30 @@
           }),
         );
       }
+
+      // Ligne de détail : nom de l'album courant + compteur médias.
+      const details = [];
       if (data.current) {
-        $modal.find(".album-loading-detail").text(data.current);
+        details.push(data.current);
       }
+      if (data.detail) {
+        details.push(data.detail);
+      }
+      // Infos globales si disponibles.
+      if (
+        data.total_albums &&
+        data.total_medias &&
+        data.phase === "loading_media"
+      ) {
+        details.push(
+          Drupal.t("@albums albums, @medias médias", {
+            "@albums": data.total_albums,
+            "@medias": data.total_medias,
+          }),
+        );
+      }
+
+      $modal.find(".album-loading-detail").text(details.join(" — "));
     },
 
     close: function ($modal, $target, html, newSettings) {
