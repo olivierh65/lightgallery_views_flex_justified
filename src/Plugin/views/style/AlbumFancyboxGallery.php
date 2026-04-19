@@ -63,7 +63,6 @@ class AlbumFancyboxGallery extends StylePluginBase {
 
   protected string $renderToken = '';
 
-
   /**
    * Constructs an AlbumFancyboxGallery style plugin instance.
    *
@@ -204,10 +203,12 @@ class AlbumFancyboxGallery extends StylePluginBase {
     // }.
   }
 
+  /**
+   *
+   */
   public function setRenderToken(string $token): void {
-  $this->renderToken = $token;
-}
-
+    $this->renderToken = $token;
+  }
 
   /**
    * {@inheritdoc}
@@ -218,13 +219,18 @@ class AlbumFancyboxGallery extends StylePluginBase {
     // Token unique pour ce rendu — permet au JS de poller l'avancement.
     $render_token = $this->renderToken;
     $tempstore    = \Drupal::service('tempstore.private')->get('album_gallery');
-    $tempstore->set($render_token, [
-      'status'    => 'starting',
-      'progress'  => 0,
-      'processed' => 0,
-      'total'     => 0,
-      'current'   => '',
-    ]);
+
+    // Phase initiale — requête SQL Views déjà exécutée.
+    $total_rows = count($this->view->result);
+    if ($tempstore && !empty($render_token)) {
+      $tempstore->set($render_token, [
+        'status'   => 'processing',
+        'phase'    => 'starting',
+        'message'  => 'Démarrage...',
+        'progress' => 2,
+        'detail'   => $total_rows . ' résultats SQL',
+      ]);
+    }
 
     ['width' => $max_width, 'height' => $max_height] = $this->getImageStyleDimensions($this->options['image']['image_thumbnail_style'] ?? '');
 
@@ -282,6 +288,16 @@ class AlbumFancyboxGallery extends StylePluginBase {
     $build['#groups'] = $this->filterEmptyGroups($build['#groups']);
     $build['#groups'] = $this->sortGroupsByNodeGrouping($build['#groups'], $nid_field);
 
+    if ($tempstore && !empty($render_token)) {
+      $tempstore->set($render_token, [
+        'status'   => 'processing',
+        'phase'    => 'rendering',
+        'message'  => 'Rendu final...',
+        'progress' => 95,
+        'detail'   => 'Génération du HTML...',
+      ]);
+    }
+
     foreach ($build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings']['plugins'] ?? [] as $plugin_name => $plugin) {
       $build['#attached']['library'][] = $plugin;
     }
@@ -296,10 +312,11 @@ class AlbumFancyboxGallery extends StylePluginBase {
 
     $build['#cache']['contexts'][] = 'session';
 
-    // Marquer le rendu comme terminé.
+    // Marquer comme terminé.
     $tempstore->set($render_token, [
       'status'   => 'complete',
       'progress' => 100,
+      'message'  => 'Terminé',
     ]);
 
     unset($this->view->row_index);
@@ -607,6 +624,15 @@ class AlbumFancyboxGallery extends StylePluginBase {
 
     // ÉTAPE 1 : Groupement manuel par NID + collecte des MIDs depuis les
     // propriétés SQL de la row (déjà dans le résultat, zéro requête).
+    if ($tempstore) {
+      $tempstore->set($render_token, [
+        'status'  => 'processing',
+        'phase'   => 'grouping',
+        'message' => 'Analyse des albums...',
+        'progress' => 5,
+      ]);
+    }
+
     $grouped_by_nid = [];
     $all_mids       = [];
 
@@ -627,15 +653,22 @@ class AlbumFancyboxGallery extends StylePluginBase {
       }
     }
 
-    $total = count($grouped_by_nid);
-    // Mettre à jour le total maintenant qu'on le connaît.
+    $total      = count($grouped_by_nid);
+    $total_mids = count($all_mids);
+
+    // Mettre à jour avec les totaux maintenant connus.
     if ($tempstore) {
       $tempstore->set($render_token, [
-        'status'    => 'processing',
-        'progress'  => 0,
-        'processed' => 0,
-        'total'     => $total,
-        'current'   => '',
+        'status'       => 'processing',
+        'phase'        => 'loading_media',
+        'message'      => 'Chargement des médias...',
+        'progress'     => 10,
+        'total_albums' => $total,
+        'total_medias' => $total_mids,
+        'processed'    => 0,
+        'total'        => $total,
+        'current'      => '',
+        'detail'       => $total . ' albums, ' . $total_mids . ' médias',
       ]);
     }
 
@@ -643,6 +676,21 @@ class AlbumFancyboxGallery extends StylePluginBase {
     $all_media_entities = !empty($all_mids)
       ? \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($all_mids)
       : [];
+
+    if ($tempstore) {
+      $tempstore->set($render_token, [
+        'status'       => 'processing',
+        'phase'        => 'processing_albums',
+        'message'      => 'Préparation des albums...',
+        'progress'     => 15,
+        'total_albums' => $total,
+        'total_medias' => $total_mids,
+        'processed'    => 0,
+        'total'        => $total,
+        'current'      => '',
+        'detail'       => $total_mids . ' médias chargés',
+      ]);
+    }
 
     // ÉTAPE 3 : Traiter chaque album.
     $all_groups = [];
@@ -662,14 +710,20 @@ class AlbumFancyboxGallery extends StylePluginBase {
       }
 
       $processed++;
+      $album_media_count = count($nid_data['mids'] ?? []);
       // Écrire la progression dans tempstore.
       if ($tempstore) {
         $tempstore->set($render_token, [
-          'status'    => 'processing',
-          'progress'  => round($processed / $total * 90),
-          'processed' => $processed,
-          'total'     => $total,
-          'current'   => $node->label(),
+          'status'       => 'processing',
+          'phase'        => 'processing_albums',
+          'message'      => 'Traitement album ' . $processed . '/' . $total,
+          'progress'     => 15 + round($processed / $total * 75),
+          'total_albums' => $total,
+          'total_medias' => $total_mids,
+          'processed'    => $processed,
+          'total'        => $total,
+          'current'      => $node->label(),
+          'detail'       => $album_media_count . ' médias',
         ]);
       }
 
@@ -714,6 +768,21 @@ class AlbumFancyboxGallery extends StylePluginBase {
       if (!empty($album_groups_processed)) {
         $all_groups = array_merge($all_groups, $album_groups_processed);
       }
+    }
+
+    if ($tempstore) {
+      $tempstore->set($render_token, [
+        'status'       => 'processing',
+        'phase'        => 'finalizing',
+        'message'      => 'Finalisation...',
+        'progress'     => 90,
+        'total_albums' => $total,
+        'total_medias' => $total_mids,
+        'processed'    => $processed,
+        'total'        => $total,
+        'current'      => '',
+        'detail'       => 'Tri et sécurisation...',
+      ]);
     }
 
     return $all_groups;
