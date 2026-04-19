@@ -67,6 +67,14 @@ function lightgallery_views_flex_justified_theme(array $existing, string $type, 
       ],
       'template' => 'album-fancybox-grid',
     ],
+    'album_gallery_page' => [
+      'variables' => [
+        'term_id'    => NULL,
+        'view_id'    => NULL,
+        'display_id' => NULL,
+      ],
+      'template' => 'album-gallery-page',  // → templates/album-gallery-page.html.twig
+    ],
   ];
 }
 

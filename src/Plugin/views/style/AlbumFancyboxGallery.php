@@ -9,8 +9,6 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\media_album_av_common\Service\AlbumGroupingConfigService;
 use Drupal\node\Entity\Node;
 use Drupal\Component\Utility\Crypt;
-
-use Drupal\image\Entity\ImageStyle;
 use Drupal\lightgallery_views_flex_justified\Traits\ProcessAlbumTrait;
 
 /**
@@ -62,6 +60,10 @@ class AlbumFancyboxGallery extends StylePluginBase {
    */
   protected $usesFields = FALSE;
 
+
+  protected string $renderToken = '';
+
+
   /**
    * Constructs an AlbumFancyboxGallery style plugin instance.
    *
@@ -85,12 +87,12 @@ class AlbumFancyboxGallery extends StylePluginBase {
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     return new static(
-          $configuration,
-          $plugin_id,
-          $plugin_definition,
-          $container->get('file_url_generator'),
-          $container->get('media_album_av_common.album_grouping_config')
-      );
+        $configuration,
+        $plugin_id,
+        $plugin_definition,
+        $container->get('file_url_generator'),
+        $container->get('media_album_av_common.album_grouping_config')
+    );
   }
 
   /**
@@ -106,7 +108,6 @@ class AlbumFancyboxGallery extends StylePluginBase {
         'author_field' => NULL,
         'description_field' => NULL,
         'url_field' => NULL,
-        'image_thumbnail_style' => 'medium',
       ],
     ];
     $options['lightgallery'] = [
@@ -133,26 +134,6 @@ class AlbumFancyboxGallery extends StylePluginBase {
     // Get available fields from the view, excluding hidden fields.
     [$fields_text, $fields_media, $fields_taxo] = $this->getTextAndMediaFields();
 
-    // Image styles for thumbnails.
-    $image_styles = ImageStyle::loadMultiple();
-    foreach ($image_styles as $style => $image_style) {
-      $image_thumbnail_style[$image_style->id()] = $image_style->label();
-    }
-    $default_style = '';
-    if (isset($this->options['image']['image_thumbnail_style']) && $this->options['image']['image_thumbnail_style']) {
-      $default_style = $this->options['image']['image_thumbnail_style'];
-    }
-    elseif (isset($image_styles['image']['medium'])) {
-      $default_style = 'medium';
-    }
-    elseif (isset($image_styles['image']['thumbnail'])) {
-      $default_style = 'thumbnail';
-    }
-    elseif (!empty($image_styles)) {
-      $default_style = array_key_first($image_styles);
-    }
-    $this->options['image']['image_thumbnail_style'] = $default_style;
-
     // Field for the image.
     $form['image'] = [
       '#type' => 'details',
@@ -168,14 +149,6 @@ class AlbumFancyboxGallery extends StylePluginBase {
       '#options' => $fields_media,
       '#default_value' => $this->options['image']['image_field'],
       '#required' => TRUE,
-    ];
-
-    $form['image']['image_thumbnail_style'] = [
-      '#type' => 'select',
-      '#title' => $this->t('Thumbnail style'),
-      '#options' => $image_thumbnail_style,
-      '#default_value' => $this->options['image']['image_thumbnail_style'],
-      '#description' => $this->t('Select an image style to apply to the thumbnails.'),
     ];
 
     $form['image']['captions'] = [
@@ -231,11 +204,27 @@ class AlbumFancyboxGallery extends StylePluginBase {
     // }.
   }
 
+  public function setRenderToken(string $token): void {
+  $this->renderToken = $token;
+}
+
+
   /**
    * {@inheritdoc}
    */
   public function render() {
     $id = rand();
+
+    // Token unique pour ce rendu — permet au JS de poller l'avancement.
+    $render_token = $this->renderToken;
+    $tempstore    = \Drupal::service('tempstore.private')->get('album_gallery');
+    $tempstore->set($render_token, [
+      'status'    => 'starting',
+      'progress'  => 0,
+      'processed' => 0,
+      'total'     => 0,
+      'current'   => '',
+    ]);
 
     ['width' => $max_width, 'height' => $max_height] = $this->getImageStyleDimensions($this->options['image']['image_thumbnail_style'] ?? '');
 
@@ -261,6 +250,11 @@ class AlbumFancyboxGallery extends StylePluginBase {
               'albums_settings' => [],
             ],
           ],
+          // Token transmis au JS pour le polling.
+          'albumGalleryProgress' => [
+            'token'   => $render_token,
+            'enabled' => TRUE,
+          ],
         ],
       ],
     ];
@@ -269,41 +263,44 @@ class AlbumFancyboxGallery extends StylePluginBase {
     $nid_field = $this->getNidFieldName();
 
     if ($nid_field) {
-      // Mode "regroupement par album" spécifique à chaque node.
-      $build['#groups'] = $this->renderWithPerNodeGrouping($nid_field, $build, $build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings']);
+      $build['#groups'] = $this->renderWithPerNodeGrouping(
+      $nid_field,
+      $build,
+      $build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings'],
+      $render_token
+      );
     }
     else {
-      // Mode standard : utiliser les champs de regroupement de la vue.
-      $grouped_rows = $this->renderGrouping($this->view->result, $this->options['grouping'], TRUE);
-      $build['#groups'] = $this->processGroupRecursive($grouped_rows, $build, $build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings']);
+      $grouped_rows     = $this->renderGrouping($this->view->result, $this->options['grouping'], TRUE);
+      $build['#groups'] = $this->processGroupRecursive(
+      $grouped_rows,
+      $build,
+      $build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings'],
+      );
     }
 
-    // Filter out empty groups recursively (groups without albums and without subgroups).
     $build['#groups'] = $this->filterEmptyGroups($build['#groups']);
-
-    // Sort groups by node grouping configuration (using terms_rendered).
     $build['#groups'] = $this->sortGroupsByNodeGrouping($build['#groups'], $nid_field);
 
     foreach ($build['#attached']['drupalSettings']['settings']['albumFancybox']['albums_settings']['plugins'] ?? [] as $plugin_name => $plugin) {
       $build['#attached']['library'][] = $plugin;
     }
 
-    // @todo options... verifier si toujours utilisées après refactor.
-    $build['#options'] += [
-      'captions' => $this->options['image']['captions'] ?? TRUE,
-    ];
+    $build['#options'] += ['captions' => $this->options['image']['captions'] ?? TRUE];
 
-    // 1. Préparer les éléments de sécurité uniques pour ce rendu
-    $session_id = \Drupal::service('session_manager')->getId();
+    $session_id  = \Drupal::service('session_manager')->getId();
     $private_key = \Drupal::service('private_key')->get();
-    $render_id = Crypt::randomBytesBase64(8);
-    $s_token = Crypt::hmacBase64($render_id, $session_id . $private_key);
-
-    // 2. Injecter récursivement via la méthode privée
+    $render_id   = Crypt::randomBytesBase64(8);
+    $s_token     = Crypt::hmacBase64($render_id, $session_id . $private_key);
     $this->injectSecurityTokens($build['#groups'], $s_token, $render_id);
 
-    // 3. Sécuriser le cache
     $build['#cache']['contexts'][] = 'session';
+
+    // Marquer le rendu comme terminé.
+    $tempstore->set($render_token, [
+      'status'   => 'complete',
+      'progress' => 100,
+    ]);
 
     unset($this->view->row_index);
     return $build;
@@ -377,9 +374,9 @@ class AlbumFancyboxGallery extends StylePluginBase {
         $field_def = $field_definitions[$image_field];
         $type = $field_def->getType();
         if (
-              $type !== 'image' &&
-              !($type === 'entity_reference' && $field_def->getSetting('target_type') === 'media')
-          ) {
+            $type !== 'image' &&
+            !($type === 'entity_reference' && $field_def->getSetting('target_type') === 'media')
+        ) {
           $form_state->setErrorByName('image_field', $this->t('The selected field must be an image or a media reference.'));
         }
       }
@@ -602,7 +599,11 @@ class AlbumFancyboxGallery extends StylePluginBase {
    * @return array
    *   The merged groups from all nodes.
    */
-  protected function renderWithPerNodeGrouping($nid_field, array &$build, array &$lightgallery_settings) {
+  protected function renderWithPerNodeGrouping($nid_field, array &$build, array &$lightgallery_settings, string $render_token = '') {
+
+    $tempstore = !empty($render_token)
+    ? \Drupal::service('tempstore.private')->get('album_gallery')
+    : NULL;
 
     // ÉTAPE 1 : Groupement manuel par NID + collecte des MIDs depuis les
     // propriétés SQL de la row (déjà dans le résultat, zéro requête).
@@ -626,6 +627,18 @@ class AlbumFancyboxGallery extends StylePluginBase {
       }
     }
 
+    $total = count($grouped_by_nid);
+    // Mettre à jour le total maintenant qu'on le connaît.
+    if ($tempstore) {
+      $tempstore->set($render_token, [
+        'status'    => 'processing',
+        'progress'  => 0,
+        'processed' => 0,
+        'total'     => $total,
+        'current'   => '',
+      ]);
+    }
+
     // ÉTAPE 2 : Charger TOUS les médias en une seule requête.
     $all_media_entities = !empty($all_mids)
       ? \Drupal::entityTypeManager()->getStorage('media')->loadMultiple($all_mids)
@@ -633,6 +646,7 @@ class AlbumFancyboxGallery extends StylePluginBase {
 
     // ÉTAPE 3 : Traiter chaque album.
     $all_groups = [];
+    $processed  = 0;
 
     foreach ($grouped_by_nid as $nid => $nid_data) {
       $rows = $nid_data['rows'];
@@ -645,6 +659,18 @@ class AlbumFancyboxGallery extends StylePluginBase {
       $node = $first_row->_entity ?? NULL;
       if (!$node) {
         continue;
+      }
+
+      $processed++;
+      // Écrire la progression dans tempstore.
+      if ($tempstore) {
+        $tempstore->set($render_token, [
+          'status'    => 'processing',
+          'progress'  => round($processed / $total * 90),
+          'processed' => $processed,
+          'total'     => $total,
+          'current'   => $node->label(),
+        ]);
       }
 
       // Médias de cet album indexés par MID pour lookup rapide dans les sous-groupes.
@@ -665,23 +691,23 @@ class AlbumFancyboxGallery extends StylePluginBase {
         $album_groups_raw = $this->renderGrouping($rows, $grouping, FALSE);
         $album_groups_raw = $this->resolveGroupLabels($album_groups_raw);
         $album_groups_processed = $this->processGroupRecursive(
-          $album_groups_raw,
-          $build,
-          $lightgallery_settings,
-          0,
-          0,
-          $album_medias
+        $album_groups_raw,
+        $build,
+        $lightgallery_settings,
+        0,
+        0,
+        $album_medias
         );
       }
       else {
         // Pas de sous-groupement : un seul groupe = tout l'album.
         $album_groups_processed = $this->processGroupRecursive(
-          [['group' => $node->label(), 'level' => 0, 'rows' => $rows]],
-          $build,
-          $lightgallery_settings,
-          0,
-          0,
-          $album_medias
+        [['group' => $node->label(), 'level' => 0, 'rows' => $rows]],
+        $build,
+        $lightgallery_settings,
+        0,
+        0,
+        $album_medias
         );
       }
 

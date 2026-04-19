@@ -1,0 +1,24 @@
+album_gallery.status:
+  path: '/album-gallery/status/{token}'
+  defaults:
+    _controller: '\Drupal\lightgallery_views_flex_justified\Controller\AlbumGalleryStatusController::status'
+  requirements:
+    _permission: 'access content'
+
+album_gallery.menu_open:
+  path: '/album-gallery/event/{term_id}'
+  defaults:
+    _controller: '\Drupal\lightgallery_views_flex_justified\Controller\AlbumGalleryStatusController::menuOpen'
+    view_id: 'media_album_av'
+    display_id: 'media_album_av'
+  requirements:
+    _permission: 'access content'
+    term_id: '\d+|all'
+
+album_gallery.render:
+  path: '/album-gallery/render/{view_id}/{display_id}/{term_id}'
+  defaults:
+    _controller: '\Drupal\lightgallery_views_flex_justified\Controller\AlbumGalleryStatusController::renderView'
+  requirements:
+    _permission: 'access content'
+    term_id: '\d+|all'

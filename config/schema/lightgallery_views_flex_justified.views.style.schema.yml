@@ -14,8 +14,6 @@ views.style.album_isotope_gallery:
           type: string
         url_field:
           type: string
-        image_thumbnail_style:
-          type: string
         thumbnail_size_tolerance:
           type: integer
         layout:

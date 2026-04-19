@@ -1034,7 +1034,6 @@ display:
             title_field: title
             author_field: field_media_album_av_author
             description_field: field_media_album_av_description
-            image_thumbnail_style: medium
             captions: true
       row:
         type: fields

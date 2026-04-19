@@ -10,7 +10,6 @@ use Drupal\media_album_av_common\Service\AlbumGroupingConfigService;
 use Drupal\node\Entity\Node;
 use Drupal\Component\Utility\Crypt;
 
-use Drupal\image\Entity\ImageStyle;
 use Drupal\lightgallery_settings_ui\Traits\LightGallerySettingsTrait as LightGallerySettingsTrait;
 use Drupal\lightgallery_views_flex_justified\Traits\ProcessAlbumTrait;
 
@@ -108,7 +107,6 @@ class AlbumFlexboxGallery extends StylePluginBase {
         'author_field' => NULL,
         'description_field' => NULL,
         'url_field' => NULL,
-        'image_thumbnail_style' => 'medium',
       ],
     ];
     $options['lightgallery'] = [
@@ -135,26 +133,6 @@ class AlbumFlexboxGallery extends StylePluginBase {
     // Get available fields from the view, excluding hidden fields.
     [$fields_text, $fields_media, $fields_taxo] = $this->getTextAndMediaFields();
 
-    // Image styles for thumbnails.
-    $image_styles = ImageStyle::loadMultiple();
-    foreach ($image_styles as $style => $image_style) {
-      $image_thumbnail_style[$image_style->id()] = $image_style->label();
-    }
-    $default_style = '';
-    if (isset($this->options['image']['image_thumbnail_style']) && $this->options['image']['image_thumbnail_style']) {
-      $default_style = $this->options['image']['image_thumbnail_style'];
-    }
-    elseif (isset($image_styles['image']['medium'])) {
-      $default_style = 'medium';
-    }
-    elseif (isset($image_styles['image']['thumbnail'])) {
-      $default_style = 'thumbnail';
-    }
-    elseif (!empty($image_styles)) {
-      $default_style = array_key_first($image_styles);
-    }
-    $this->options['image']['image_thumbnail_style'] = $default_style;
-
     // Field for the image.
     $form['image'] = [
       '#type' => 'details',
@@ -170,14 +148,6 @@ class AlbumFlexboxGallery extends StylePluginBase {
       '#options' => $fields_media,
       '#default_value' => $this->options['image']['image_field'],
       '#required' => TRUE,
-    ];
-
-    $form['image']['image_thumbnail_style'] = [
-      '#type' => 'select',
-      '#title' => $this->t('Thumbnail style'),
-      '#options' => $image_thumbnail_style,
-      '#default_value' => $this->options['image']['image_thumbnail_style'],
-      '#description' => $this->t('Select an image style to apply to the thumbnails.'),
     ];
 
     $form['image']['captions'] = [
