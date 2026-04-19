@@ -37,6 +37,8 @@
 
     startRender: function (renderUrl, $modal, $target) {
       const self = this;
+      self._html = null;
+      self._drupalSettings = null;
 
       $.getJSON(renderUrl)
         .done(function (data) {
@@ -44,7 +46,12 @@
           self._drupalSettings = data.drupalSettings || null;
         })
         .fail(function () {
-          self.error($modal, Drupal.t("Erreur lors du chargement."));
+          // Ne pas appeler error() ici — le polling détectera status=error
+          // depuis tempstore et affichera le message approprié.
+          // On log juste en console.
+          console.error(
+            "Render request failed — polling will handle the error display.",
+          );
         });
     },
 
@@ -167,15 +174,20 @@
     error: function ($modal, message) {
       $modal.find(".album-loading-message").text(message);
       $modal.find(".album-loading-bar").css("background", "#c00");
-      $modal.append(
-        $('<button class="button">' + Drupal.t("Fermer") + "</button>").on(
-          "click",
-          function () {
+
+      // N'ajouter le bouton que s'il n'existe pas déjà.
+      if (!$modal.find(".album-error-close").length) {
+        $modal.append(
+          $(
+            '<button class="button album-error-close">' +
+              Drupal.t("Fermer") +
+              "</button>",
+          ).on("click", function () {
             Drupal.dialog($modal[0]).close();
             window._albumGalleryStarted = false;
-          },
-        ),
-      );
+          }),
+        );
+      }
     },
   };
 })(jQuery, Drupal, drupalSettings, once);
