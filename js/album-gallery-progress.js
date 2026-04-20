@@ -13,7 +13,7 @@
       if (cfg && cfg.enabled && cfg.token && !window._albumGalleryStarted) {
         window._albumGalleryStarted = true;
 
-         // Réinitialiser AVANT openModal() qui active _pollingActive.
+        // Réinitialiser AVANT openModal() qui active _pollingActive.
         AlbumGalleryProgress._html = null;
         AlbumGalleryProgress._drupalSettings = null;
         AlbumGalleryProgress._renderDone = false;
@@ -119,6 +119,11 @@
     waitForHtml: function ($modal, $target, attempts) {
       const self = this;
 
+      // Si le polling a été arrêté (fermeture manuelle), ne pas continuer.
+      if (!self._pollingActive) {
+        return;
+      }
+
       if (self._html !== null) {
         setTimeout(function () {
           self.close($modal, $target, self._html, self._drupalSettings);
@@ -217,7 +222,16 @@
 
     close: function ($modal, $target, html, newSettings) {
       this._pollingActive = false;
-      Drupal.dialog($modal[0]).close();
+      // Vérifier que le dialog existe encore avant de le fermer.
+      // Si fermé manuellement, jQuery UI a déjà détruit l'instance.
+      try {
+        if ($modal && $modal.length && $modal.hasClass("ui-dialog-content")) {
+          Drupal.dialog($modal[0]).close();
+        }
+      } catch (e) {
+        // Dialog déjà fermé — ignorer l'erreur.
+        console.log("Dialog déjà fermé:", e.message);
+      }
 
       // Nettoyer le tempstore.
       this.cleanup();
