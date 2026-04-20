@@ -119,11 +119,6 @@
     waitForHtml: function ($modal, $target, attempts) {
       const self = this;
 
-      // Si le polling a été arrêté (fermeture manuelle), ne pas continuer.
-      if (!self._pollingActive) {
-        return;
-      }
-
       if (self._html !== null) {
         setTimeout(function () {
           self.close($modal, $target, self._html, self._drupalSettings);
