@@ -81,9 +81,9 @@ class AlbumGalleryStatusController extends ControllerBase {
     }
 
     $view->setDisplay($display_id);
-    if ($term_id !== 'all') {
-      $view->setArguments([$term_id]);
-    }
+    // If ($term_id !== 'all') {.
+    $view->setArguments([$term_id]);
+    // }
     $view->execute();
 
     try {
