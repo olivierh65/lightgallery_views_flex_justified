@@ -480,6 +480,16 @@ class AlbumFancyboxGallery extends StylePluginBase {
   }
 
   /**
+   * {@inheritdoc}
+   * Override pour récupérer la valeur du champ directement depuis l'entité,
+   * sans passer par le pipeline de rendu Views (renderFields).
+   * Délègue à getFieldValue() qui implémente déjà cette logique.
+   */
+  public function getField($index, $field) {
+    return (string) $this->getFieldValue($index, $field);
+  }
+
+  /**
    * Sort groups by node grouping configuration using terms_rendered.
    *
    * @param array $groups
