@@ -25,18 +25,6 @@ function lightgallery_views_flex_justified_theme(array $existing, string $type, 
       ],
       'template' => 'album-justified-gallery',
     ],
-    'album_isotope_gallery' => [
-      'variables' => [
-        'attributes' => [],
-        'view' => NULL,
-        'options' => [],
-        'albums' => [],
-        'groups' => [],
-        'settings' => [],
-        'init' => TRUE
-      ],
-      'template' => 'album-isotope-gallery',
-    ],
     'album_flexbox_gallery' => [
       'variables' => [
         'attributes' => [],
@@ -57,23 +45,13 @@ function lightgallery_views_flex_justified_theme(array $existing, string $type, 
       ],
       'template' => 'album-fancybox-gallery',
     ],
-    'album_fancybox_grid' => [
-      'variables' => [
-        'attributes' => [],
-        'view' => NULL,
-        'options' => [],
-        'groups' => [],
-        'init' => TRUE
-      ],
-      'template' => 'album-fancybox-grid',
-    ],
     'album_gallery_page' => [
       'variables' => [
         'term_id'    => NULL,
         'view_id'    => NULL,
         'display_id' => NULL,
       ],
-      'template' => 'album-gallery-page',  // → templates/album-gallery-page.html.twig
+      'template' => 'album-gallery-page',  //  templates/album-gallery-page.html.twig
     ],
   ];
 }
@@ -184,17 +162,5 @@ function template_preprocess_lightgallery_views_flex_justified(array &$variables
     $variables['attributes']['class'][] = 'lightgallery-init';
     $variables['#attached']['library'][] = 'lightgallery/init';
   }
-}
-
-/**
- * Implements hook_preprocess_HOOK().
- */
-function lightgallery_views_flex_justified_preprocess_image(array &$variabes): void {
-  // Append "#video" to video thumbnails to allow custom styling.
-  if (!empty($variabes['attributes']['data-is-video-thumbnail'])) {
-    $variabes['attributes']['src'] .= '#video';
-  }
-
-  unset($variabes['attributes']['data-is-video-thumbnail']);
 }
 
