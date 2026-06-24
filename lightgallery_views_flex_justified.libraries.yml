@@ -37,6 +37,7 @@ fancybox:
   js:
     https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.umd.js: { type: external }
     js/fancybox.js: {}
+    js/image-throttle.js: {}
   dependencies:
     - core/drupal
     - core/drupalSettings
@@ -50,6 +51,7 @@ fancybox_grid:
   js:
     https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.umd.js: { type: external }
     js/fancybox_grid.js: {}
+    js/image-throttle.js: {}
   dependencies:
     - core/drupal
     - core/drupalSettings
@@ -66,5 +68,5 @@ album_gallery_progress:
     - core/drupal
     - core/once
     - core/drupalSettings
-    - core/drupal.dialog.ajax   # ← pour Drupal.dialog()
-    - core/drupal.ajax           # ← pour Drupal.ajax()
+    - core/drupal.dialog.ajax
+    - core/drupal.ajax
